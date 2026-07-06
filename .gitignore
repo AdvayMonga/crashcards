@@ -8,6 +8,9 @@ HANDOFF.md
 .AppleDouble
 .LSOverride
 
+# --- Generated Xcode project (xcodegen; source of truth is project.yml) ---
+*.xcodeproj/
+
 # --- Xcode ---
 build/
 DerivedData/

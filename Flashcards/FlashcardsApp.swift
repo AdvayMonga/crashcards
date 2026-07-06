@@ -2,9 +2,12 @@ import SwiftUI
 
 @main
 struct FlashcardsApp: App {
+    @State private var library = LibraryStore()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environment(library)
         }
     }
 }

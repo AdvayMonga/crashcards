@@ -1,0 +1,38 @@
+# --- Local process docs (keep working state out of version control) ---
+CLAUDE.md
+PLAN.md
+HANDOFF.md
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- Xcode ---
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# --- Swift Package Manager ---
+.build/
+.swiftpm/
+Package.resolved
+
+# --- CocoaPods / Carthage (only if used) ---
+Pods/
+Carthage/Build/
+
+# --- Fastlane (only if used) ---
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output

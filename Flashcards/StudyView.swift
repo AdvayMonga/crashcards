@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Classic study: one card at a time, tap to flip, next/prev, shuffle, completion.
+/// Classic study: one card at a time, tap to flip, swipe or arrows for prev/next, shuffle.
 struct StudyView: View {
     @State var session: StudySession
     @Environment(\.dismiss) private var dismiss
@@ -20,7 +20,13 @@ struct StudyView: View {
         .padding()
         .navigationTitle("Classic")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)   // disable the edge swipe-back-to-home
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: {
+                    Label("Sets", systemImage: "chevron.left")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { session.restart() } label: {
                     Image(systemName: "shuffle")
@@ -31,42 +37,49 @@ struct StudyView: View {
     }
 
     private var cardView: some View {
-        Button {
-            session.flip()
-        } label: {
-            VStack {
-                Spacer()
-                Text(session.isFlipped ? (session.current?.back ?? "") : (session.current?.front ?? ""))
-                    .font(.title2.weight(.medium))
-                    .multilineTextAlignment(.center)
-                    .padding(24)
-                Spacer()
-                Text(session.isFlipped ? "answer" : "tap to reveal")
-                    .font(.caption)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 16)
-            }
-            .frame(maxWidth: .infinity, minHeight: 340)
-            .background(session.isFlipped ? Color(.secondarySystemBackground) : Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color(.separator)))
+        VStack {
+            Spacer()
+            Text(session.isFlipped ? (session.current?.back ?? "") : (session.current?.front ?? ""))
+                .font(.title2.weight(.medium))
+                .multilineTextAlignment(.center)
+                .padding(24)
+            Spacer()
+            Text(session.isFlipped ? "answer" : "tap to reveal")
+                .font(.caption)
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 16)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, minHeight: 340)
+        .background(session.isFlipped ? Color(.secondarySystemBackground) : Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color(.separator)))
+        .contentShape(Rectangle())
+        .onTapGesture { session.flip() }
+        .gesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in handleSwipe(value.translation) }
+        )
     }
 
     private var controls: some View {
         HStack(spacing: 12) {
-            Button("Prev") { session.prev() }
-                .buttonStyle(.bordered)
-                .disabled(session.position == 0)
+            Button { session.prev() } label: {
+                Image(systemName: "chevron.left").font(.title3)
+            }
+            .buttonStyle(.bordered)
+            .disabled(session.position == 0)
+
             Button(session.isFlipped ? "Hide" : "Flip") { session.flip() }
                 .buttonStyle(.borderedProminent)
-            Button("Next") { session.next() }
-                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
+
+            Button { session.next() } label: {
+                Image(systemName: "chevron.right").font(.title3)
+            }
+            .buttonStyle(.bordered)
         }
         .controlSize(.large)
-        .frame(maxWidth: .infinity)
     }
 
     private var completion: some View {
@@ -85,5 +98,11 @@ struct StudyView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.large)
         }
+    }
+
+    /// A decisive horizontal swipe moves cards: left = next, right = previous.
+    private func handleSwipe(_ translation: CGSize) {
+        guard abs(translation.width) > 50, abs(translation.width) > abs(translation.height) else { return }
+        if translation.width < 0 { session.next() } else { session.prev() }
     }
 }

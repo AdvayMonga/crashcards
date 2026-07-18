@@ -16,6 +16,9 @@ struct StudyView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
                 currentCard
+                if currentIsFlip && session.isFlipped {
+                    gradeBar
+                }
                 controls
             }
         }
@@ -98,7 +101,10 @@ struct StudyView: View {
     private func choiceRow(_ choice: Choice) -> some View {
         let state = choiceState(for: choice)
         return Button {
-            if picked == nil { picked = choice }
+            if picked == nil {
+                picked = choice
+                session.record(choice.isCorrect)
+            }
         } label: {
             HStack {
                 Text(choice.text)
@@ -145,16 +151,46 @@ struct StudyView: View {
         .controlSize(.large)
     }
 
+    /// Grade a flip card once its answer is showing.
+    private var gradeBar: some View {
+        HStack(spacing: 12) {
+            Button { session.record(false); session.next() } label: {
+                Label("Missed", systemImage: "xmark").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+            Button { session.record(true); session.next() } label: {
+                Label("Got it", systemImage: "checkmark").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+        }
+        .controlSize(.large)
+    }
+
     private var completion: some View {
-        VStack(spacing: 20) {
+        let missed = session.missedCards
+        return VStack(spacing: 20) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
             Text(session.isEmpty ? "No cards to study." : "Deck complete.")
                 .font(.title2.weight(.semibold))
             if !session.isEmpty {
+                Text("\(session.correctCount) / \(session.total) correct")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            if !missed.isEmpty {
+                Button { session = StudySession(cards: missed) } label: {
+                    Label("Review \(missed.count) missed", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
+            if !session.isEmpty {
                 Button("Study Again") { session.restart() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .controlSize(.large)
             }
             Button("Done") { dismiss() }

@@ -29,7 +29,7 @@ struct FolderSetupView: View {
         }
         .padding(32)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result { library.setFolder(url) }
+            if case .success(let url) = result { library.addFolder(url) }
         }
     }
 }

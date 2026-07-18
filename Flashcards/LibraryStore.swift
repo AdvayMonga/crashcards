@@ -1,18 +1,20 @@
 import Foundation
 import Observation
 
-/// Holds the parsed sets in memory. Re-scans the folder on demand (app launch/foreground).
+/// Holds the parsed sets in memory. Re-scans the folders on demand (app launch/foreground).
 @Observable
 final class LibraryStore {
     private(set) var sets: [FlashcardSet] = []
     var loadError: String?
 
-    var hasFolder: Bool { FolderAccess.hasFolder }
+    var hasFolders: Bool { FolderAccess.hasFolders }
+    var folders: [AttachedFolder] { FolderAccess.folders }
 
-    /// Re-read and parse the chosen folder. No-op (empties) if no folder is set.
+    /// Re-read and parse all attached folders. No-op (empties) if none are set.
     func reload() {
-        guard FolderAccess.hasFolder else {
+        guard FolderAccess.hasFolders else {
             sets = []
+            loadError = nil
             return
         }
         do {
@@ -24,18 +26,17 @@ final class LibraryStore {
         }
     }
 
-    func setFolder(_ url: URL) {
+    func addFolder(_ url: URL) {
         do {
-            try FolderAccess.setFolder(url)
+            try FolderAccess.addFolder(url)
             reload()
         } catch {
             loadError = error.localizedDescription
         }
     }
 
-    func clearFolder() {
-        FolderAccess.clearFolder()
-        sets = []
-        loadError = nil
+    func removeFolder(at index: Int) {
+        FolderAccess.removeFolder(at: index)
+        reload()
     }
 }

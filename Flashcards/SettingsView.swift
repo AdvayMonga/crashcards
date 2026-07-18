@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Minimal settings: see and change the flashcards folder.
+/// Settings: manage the attached flashcard folders (add / remove).
 struct SettingsView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(\.dismiss) private var dismiss
@@ -9,9 +9,21 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Flashcards Folder") {
-                    LabeledContent("Current", value: FolderAccess.folderName ?? "None")
-                    Button("Change Folder…") { importing = true }
+                Section("Flashcard Folders") {
+                    if library.folders.isEmpty {
+                        Text("No folders attached").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(library.folders) { folder in
+                            Label(folder.name, systemImage: "folder")
+                        }
+                        .onDelete { offsets in
+                            let ids = offsets.map { library.folders[$0].id }
+                            for id in ids.sorted(by: >) { library.removeFolder(at: id) }
+                        }
+                    }
+                    Button { importing = true } label: {
+                        Label("Add Folder…", systemImage: "plus")
+                    }
                 }
                 Section {
                     LabeledContent("Sets loaded", value: "\(library.sets.count)")
@@ -25,7 +37,7 @@ struct SettingsView: View {
                 }
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
-                if case .success(let url) = result { library.setFolder(url) }
+                if case .success(let url) = result { library.addFolder(url) }
             }
         }
     }

@@ -9,59 +9,112 @@ enum FolderError: LocalizedError {
     }
 }
 
-/// Persistent, sandbox-safe access to the user-picked flashcards folder.
+/// A folder the user has attached, for display in Settings. `id` is its bookmark index.
+struct AttachedFolder: Identifiable, Hashable {
+    let id: Int
+    let name: String
+}
+
+/// Persistent, sandbox-safe access to the user-picked flashcards folders.
 ///
-/// iOS hands out a security-scoped URL from the Files picker; we store a bookmark so the
-/// same folder stays readable across launches. No paths are ever hardcoded — the folder is
-/// whatever the user chose.
+/// The user can attach several folders (each stored as a security-scoped bookmark); the app
+/// reads every `.md` under each one, recursively. No paths are hardcoded.
 enum FolderAccess {
-    private static let bookmarkKey = "flashcardsFolderBookmark"
+    private static let bookmarksKey = "flashcardsFolderBookmarks"
     private static var defaults: UserDefaults { .standard }
 
-    static var hasFolder: Bool { defaults.data(forKey: bookmarkKey) != nil }
-
-    /// Human-readable name of the chosen folder, for display in Settings.
-    static var folderName: String? {
-        (try? resolveFolder())?.lastPathComponent
+    private static func bookmarks() -> [Data] {
+        defaults.array(forKey: bookmarksKey) as? [Data] ?? []
+    }
+    private static func saveBookmarks(_ list: [Data]) {
+        defaults.set(list, forKey: bookmarksKey)
     }
 
-    /// Save a bookmark for a folder the user just picked.
-    static func setFolder(_ url: URL) throws {
+    static var hasFolders: Bool { !bookmarks().isEmpty }
+
+    /// Attached folders for display, skipping any that no longer resolve.
+    static var folders: [AttachedFolder] {
+        bookmarks().enumerated().compactMap { index, data in
+            guard let url = try? resolve(data) else { return nil }
+            return AttachedFolder(id: index, name: url.lastPathComponent)
+        }
+    }
+
+    /// Attach a folder the user just picked (ignores exact duplicates).
+    static func addFolder(_ url: URL) throws {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let data = try url.bookmarkData()
-        defaults.set(data, forKey: bookmarkKey)
+
+        var list = bookmarks()
+        let newPath = url.standardizedFileURL.path
+        let existing = list.compactMap { try? resolve($0).standardizedFileURL.path }
+        guard !existing.contains(newPath) else { return }
+        list.append(data)
+        saveBookmarks(list)
     }
 
-    static func clearFolder() {
-        defaults.removeObject(forKey: bookmarkKey)
+    static func removeFolder(at index: Int) {
+        var list = bookmarks()
+        guard list.indices.contains(index) else { return }
+        list.remove(at: index)
+        saveBookmarks(list)
     }
 
-    /// Read and parse every `.md` file in the chosen folder, sorted by title.
+    /// Read + parse every `.md` under every attached folder (recursively), sorted by title.
     static func loadSets() throws -> [FlashcardSet] {
-        let folder = try resolveFolder()
-        let scoped = folder.startAccessingSecurityScopedResource()
-        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+        var list = bookmarks()
+        guard !list.isEmpty else { throw FolderError.noFolder }
 
-        let contents = try FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: nil
-        )
-        let mdFiles = contents.filter { $0.pathExtension.lowercased() == "md" }
+        var sets: [FlashcardSet] = []
+        var seenIDs = Set<String>()
+        var changed = false
 
-        let sets = mdFiles.compactMap { url -> FlashcardSet? in
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-            let set = MarkdownParser.parse(text, filename: url.lastPathComponent)
-            return set.cards.isEmpty ? nil : set
+        for i in list.indices {
+            var stale = false
+            guard let folder = try? URL(resolvingBookmarkData: list[i], bookmarkDataIsStale: &stale)
+            else { continue }
+            let scoped = folder.startAccessingSecurityScopedResource()
+            defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+            if stale, let fresh = try? folder.bookmarkData() { list[i] = fresh; changed = true }
+
+            for url in markdownFiles(in: folder) {
+                guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                let parsed = MarkdownParser.parse(text, filename: url.lastPathComponent)
+                guard !parsed.cards.isEmpty else { continue }
+                sets.append(uniquelyIdentified(parsed, seen: &seenIDs))
+            }
         }
+
+        if changed { saveBookmarks(list) }
         return sets.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
-    /// Resolve the saved bookmark to a live URL, refreshing it if the OS marks it stale.
-    private static func resolveFolder() throws -> URL {
-        guard let data = defaults.data(forKey: bookmarkKey) else { throw FolderError.noFolder }
+    // MARK: - Helpers
+
+    /// Filenames can collide across folders; give each set a unique id.
+    private static func uniquelyIdentified(_ set: FlashcardSet, seen: inout Set<String>) -> FlashcardSet {
+        var uid = set.id
+        var n = 2
+        while seen.contains(uid) { uid = "\(set.id) (\(n))"; n += 1 }
+        seen.insert(uid)
+        guard uid != set.id else { return set }
+        return FlashcardSet(id: uid, title: set.title, cards: set.cards)
+    }
+
+    private static func markdownFiles(in folder: URL) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(
+            at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ) else { return [] }
+        var result: [URL] = []
+        for case let url as URL in enumerator where url.pathExtension.lowercased() == "md" {
+            result.append(url)
+        }
+        return result
+    }
+
+    private static func resolve(_ data: Data) throws -> URL {
         var stale = false
-        let url = try URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale)
-        if stale { try? setFolder(url) }
-        return url
+        return try URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale)
     }
 }

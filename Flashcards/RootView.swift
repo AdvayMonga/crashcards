@@ -8,7 +8,7 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if library.hasFolder {
+            if library.hasFolders {
                 SetListView()
             } else {
                 FolderSetupView()

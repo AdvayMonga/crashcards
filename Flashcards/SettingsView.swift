@@ -25,6 +25,14 @@ struct SettingsView: View {
                         Label("Add Folder…", systemImage: "plus")
                     }
                 }
+                Section("Focus") {
+                    NavigationLink {
+                        BlockingView()
+                    } label: {
+                        Label("App Blocking", systemImage: "hand.raised")
+                    }
+                }
+
                 Section {
                     LabeledContent("Sets loaded", value: "\(library.sets.count)")
                 }

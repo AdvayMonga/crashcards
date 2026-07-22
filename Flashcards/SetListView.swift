@@ -5,6 +5,7 @@ struct SetListView: View {
     @Environment(LibraryStore.self) private var library
     @State private var selected: Set<String> = Prefs.selectedSetIDs
     @State private var studying = false
+    @State private var studyingVoice = false
     @State private var showSettings = false
 
     private var selectedSets: [FlashcardSet] {
@@ -25,6 +26,9 @@ struct SetListView: View {
                 .safeAreaInset(edge: .bottom) { studyBar }
                 .navigationDestination(isPresented: $studying) {
                     StudyView(session: StudySession(sets: selectedSets))
+                }
+                .navigationDestination(isPresented: $studyingVoice) {
+                    VoiceStudyView(session: StudySession(sets: selectedSets))
                 }
                 .sheet(isPresented: $showSettings) {
                     SettingsView().environment(library)
@@ -71,14 +75,22 @@ struct SetListView: View {
 
     @ViewBuilder private var studyBar: some View {
         if !library.sets.isEmpty {
-            Button { studying = true } label: {
-                Text(selectedSets.isEmpty ? "Select sets to study"
-                                          : "Study \(selectedCardCount) cards")
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 12) {
+                Button { studying = true } label: {
+                    Text(selectedSets.isEmpty ? "Select sets to study"
+                                              : "Study \(selectedCardCount) cards")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedSets.isEmpty)
+
+                Button { studyingVoice = true } label: {
+                    Image(systemName: "mic.fill")
+                }
+                .buttonStyle(.bordered)
+                .disabled(selectedSets.isEmpty)
             }
-            .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(selectedSets.isEmpty)
             .padding()
             .background(.bar)
         }

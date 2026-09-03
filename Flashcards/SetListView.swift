@@ -3,6 +3,7 @@ import SwiftUI
 /// Home screen: pick which sets to study, then start a shuffled Classic session.
 struct SetListView: View {
     @Environment(LibraryStore.self) private var library
+    @Environment(FlagStore.self) private var flags
     @State private var selected: Set<String> = Prefs.selectedSetIDs
     @State private var studying = false
     @State private var studyingVoice = false
@@ -31,7 +32,7 @@ struct SetListView: View {
                     VoiceStudyView(session: StudySession(sets: selectedSets))
                 }
                 .sheet(isPresented: $showSettings) {
-                    SettingsView().environment(library)
+                    SettingsView().environment(library).environment(flags)
                 }
         }
         .onChange(of: library.sets.map(\.id)) { _, ids in

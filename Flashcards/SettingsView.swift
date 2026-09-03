@@ -3,6 +3,7 @@ import SwiftUI
 /// Settings: manage the attached flashcard folders (add / remove).
 struct SettingsView: View {
     @Environment(LibraryStore.self) private var library
+    @Environment(FlagStore.self) private var flags
     @Environment(\.dismiss) private var dismiss
     @State private var importing = false
 
@@ -35,6 +36,9 @@ struct SettingsView: View {
 
                 Section {
                     LabeledContent("Sets loaded", value: "\(library.sets.count)")
+                    LabeledContent("Flagged cards", value: "\(flags.flags.count)")
+                } footer: {
+                    Text("Flagged cards are listed in \(FlagStore.filename) in your first folder.")
                 }
             }
             .navigationTitle("Settings")

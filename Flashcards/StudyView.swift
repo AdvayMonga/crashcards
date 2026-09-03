@@ -5,6 +5,8 @@ import SwiftUI
 struct StudyView: View {
     @State var session: StudySession
     @State private var picked: Choice?          // selected option for the current MC card
+    @State private var flagging = false
+    @Environment(FlagStore.self) private var flags
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -33,6 +35,12 @@ struct StudyView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button { flagging = true } label: {
+                    Image(systemName: flags.reason(for: session.current) == nil ? "flag" : "flag.fill")
+                }
+                .disabled(session.current == nil)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { session.restart() } label: {
                     Image(systemName: "shuffle")
                 }
@@ -40,6 +48,18 @@ struct StudyView: View {
             }
         }
         .onChange(of: session.position) { _, _ in picked = nil }
+        .confirmationDialog("Flag this card", isPresented: $flagging, titleVisibility: .visible) {
+            flagOptions
+        } message: {
+            if let card = session.current { Text(card.prompt) }
+        }
+        .alert("Couldn't write \(FlagStore.filename)",
+               isPresented: .init(get: { flags.writeError != nil },
+                                  set: { if !$0 { flags.writeError = nil } })) {
+            Button("OK") { flags.writeError = nil }
+        } message: {
+            Text(flags.writeError ?? "")
+        }
     }
 
     // MARK: - Current card
@@ -196,6 +216,18 @@ struct StudyView: View {
             Button("Done") { dismiss() }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+        }
+    }
+
+    /// One tap per reason; re-flagging a card just changes its reason.
+    @ViewBuilder private var flagOptions: some View {
+        if let card = session.current {
+            ForEach(FlagReason.allCases) { reason in
+                Button(reason.label) { flags.flag(card, as: reason) }
+            }
+            if flags.reason(for: card) != nil {
+                Button("Unflag", role: .destructive) { flags.unflag(card) }
+            }
         }
     }
 

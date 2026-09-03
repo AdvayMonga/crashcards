@@ -108,9 +108,36 @@ enum FolderAccess {
         ) else { return [] }
         var result: [URL] = []
         for case let url as URL in enumerator where url.pathExtension.lowercased() == "md" {
+            // The app writes Flagged.md itself; don't read it back in as a set.
+            guard url.lastPathComponent.caseInsensitiveCompare(FlagStore.filename) != .orderedSame
+            else { continue }
             result.append(url)
         }
         return result
+    }
+
+    // MARK: - App-written files
+
+    /// The first attached folder that still resolves — where app-written files go.
+    private static func primaryFolder() -> URL? {
+        bookmarks().lazy.compactMap { try? resolve($0) }.first
+    }
+
+    /// Read a file the app owns from the primary folder, or nil if it isn't there yet.
+    static func readAppFile(_ name: String) -> String? {
+        guard let folder = primaryFolder() else { return nil }
+        let scoped = folder.startAccessingSecurityScopedResource()
+        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+        return try? String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8)
+    }
+
+    /// Write a file the app owns into the primary folder.
+    static func writeAppFile(_ name: String, contents: String) throws {
+        guard let folder = primaryFolder() else { throw FolderError.noFolder }
+        let scoped = folder.startAccessingSecurityScopedResource()
+        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+        // Non-atomic: an atomic write needs to create a temp file in the scoped folder.
+        try contents.write(to: folder.appendingPathComponent(name), atomically: false, encoding: .utf8)
     }
 
     private static func resolve(_ data: Data) throws -> URL {

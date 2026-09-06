@@ -20,7 +20,7 @@ struct FolderSetupView: View {
             Button("Choose Folder") { importing = true }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-            if let error = library.loadError {
+            if let error = library.importError ?? library.loadError {
                 Text(error)
                     .font(.footnote)
                     .foregroundStyle(.red)
@@ -29,7 +29,10 @@ struct FolderSetupView: View {
         }
         .padding(32)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result { library.addFolder(url) }
+            switch result {
+            case .success(let url): library.addFolder(url)
+            case .failure(let error): library.importFailed(error)
+            }
         }
     }
 }

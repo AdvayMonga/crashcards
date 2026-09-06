@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// Settings: manage the attached flashcard folders (add / remove).
+/// Settings: manage the attached flashcard folders (add / remove) and review file problems.
 struct SettingsView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(FlagStore.self) private var flags
     @Environment(\.dismiss) private var dismiss
     @State private var importing = false
+
+    private var hasProblems: Bool { library.issueCount > 0 || flags.loadError != nil }
 
     var body: some View {
         NavigationStack {
@@ -37,8 +39,19 @@ struct SettingsView: View {
                 Section {
                     LabeledContent("Sets loaded", value: "\(library.sets.count)")
                     LabeledContent("Flagged cards", value: "\(flags.flags.count)")
+                    NavigationLink {
+                        FileProblemsView().environment(library).environment(flags)
+                    } label: {
+                        Label {
+                            LabeledContent("File problems", value: "\(library.issueCount)")
+                        } icon: {
+                            Image(systemName: hasProblems
+                                  ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                                .foregroundStyle(hasProblems ? .orange : .secondary)
+                        }
+                    }
                 } footer: {
-                    Text("Flagged cards are listed in \(FlagStore.filename) in your first folder.")
+                    Text("Flashcards never edits your .md files. The only file it writes is \(FlagStore.filename), in your first folder.")
                 }
             }
             .navigationTitle("Settings")
@@ -49,7 +62,17 @@ struct SettingsView: View {
                 }
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
-                if case .success(let url) = result { library.addFolder(url) }
+                switch result {
+                case .success(let url): library.addFolder(url)
+                case .failure(let error): library.importFailed(error)
+                }
+            }
+            .alert("Couldn't add folder",
+                   isPresented: .init(get: { library.importError != nil },
+                                      set: { if !$0 { library.importError = nil } })) {
+                Button("OK") { library.importError = nil }
+            } message: {
+                Text(library.importError ?? "")
             }
         }
     }

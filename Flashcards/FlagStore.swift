@@ -37,10 +37,29 @@ final class FlagStore {
     static let filename = "Flagged.md"
 
     private(set) var flags: [Flag] = []
+    /// Why the file couldn't be read, if it exists but wouldn't open.
+    private(set) var loadError: String?
+    /// True when the file is present but unreadable. Flagging is disabled rather than risk
+    /// rewriting a file whose contents we never saw.
+    private(set) var isLocked = false
     var writeError: String?
 
     func load() {
-        flags = Self.parse(FolderAccess.readAppFile(Self.filename) ?? "")
+        switch FolderAccess.readAppFile(Self.filename) {
+        case .missing:
+            flags = []
+            loadError = nil
+            isLocked = false
+        case .contents(let text):
+            flags = Self.parse(text)
+            loadError = nil
+            isLocked = false
+        case .failure(let message):
+            // Never overwrite a file we failed to read — that would destroy every flag in it.
+            flags = []
+            loadError = message
+            isLocked = true
+        }
     }
 
     func reason(for card: Card?) -> String? {
@@ -49,6 +68,7 @@ final class FlagStore {
     }
 
     func flag(_ card: Card, as reason: FlagReason) {
+        guard !isLocked else { reportLocked(); return }
         let entry = Flag(setID: card.setID, setTitle: card.setTitle,
                          prompt: card.prompt, answer: card.answer, reason: reason.rawValue)
         if let i = flags.firstIndex(where: { $0.id == entry.id }) {
@@ -60,11 +80,16 @@ final class FlagStore {
     }
 
     func unflag(_ card: Card) {
+        guard !isLocked else { reportLocked(); return }
         flags.removeAll { $0.id == key(for: card) }
         save()
     }
 
     private func key(for card: Card) -> String { "\(card.setID)|\(card.prompt)" }
+
+    private func reportLocked() {
+        writeError = "\(Self.filename) couldn't be read, so it won't be overwritten and flagging is paused. \(loadError ?? "")"
+    }
 
     private func save() {
         do {

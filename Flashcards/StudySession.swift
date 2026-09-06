@@ -15,10 +15,6 @@ final class StudySession {
         order = Array(cards.indices).shuffled()
     }
 
-    convenience init(sets: [FlashcardSet]) {
-        self.init(cards: sets.flatMap(\.cards))
-    }
-
     var total: Int { order.count }
     var isEmpty: Bool { order.isEmpty }
     var isFinished: Bool { position >= order.count }

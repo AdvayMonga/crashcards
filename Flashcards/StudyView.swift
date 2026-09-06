@@ -38,10 +38,10 @@ struct StudyView: View {
                 Button { flagging = true } label: {
                     Image(systemName: flags.reason(for: session.current) == nil ? "flag" : "flag.fill")
                 }
-                .disabled(session.current == nil)
+                .disabled(session.current == nil || flags.isLocked)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { session.restart() } label: {
+                Button { restart() } label: {
                     Image(systemName: "shuffle")
                 }
                 .disabled(session.isEmpty)
@@ -202,14 +202,14 @@ struct StudyView: View {
                     .foregroundStyle(.secondary)
             }
             if !missed.isEmpty {
-                Button { session = StudySession(cards: missed) } label: {
+                Button { session = StudySession(cards: missed); picked = nil } label: {
                     Label("Review \(missed.count) missed", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
             }
             if !session.isEmpty {
-                Button("Study Again") { session.restart() }
+                Button("Study Again") { restart() }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
             }
@@ -232,6 +232,12 @@ struct StudyView: View {
     }
 
     // MARK: - Helpers
+
+    /// Reshuffle, clearing the current card's answered state along with it.
+    private func restart() {
+        session.restart()
+        picked = nil
+    }
 
     private var currentIsFlip: Bool {
         guard let content = session.current?.content else { return false }

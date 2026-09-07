@@ -16,7 +16,7 @@ enum MarkdownParser {
             of: #"\.md$"#, with: "", options: [.regularExpression, .caseInsensitive]
         )
         var titleFromHeading = false
-        var cards: [Card] = []
+        var contents: [CardContent] = []
 
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         var i = 0
@@ -38,7 +38,7 @@ enum MarkdownParser {
                 let front = line[..<sep.lowerBound].trimmingCharacters(in: .whitespaces)
                 let back = line[sep.upperBound...].trimmingCharacters(in: .whitespaces)
                 if !front.isEmpty && !back.isEmpty {
-                    cards.append(Card(content: .flip(front: front, back: back)))
+                    contents.append(.flip(front: front, back: back))
                 }
                 i += 1
                 continue
@@ -54,7 +54,7 @@ enum MarkdownParser {
                 }
                 // Valid MC needs at least two options and a marked correct answer.
                 if choices.count >= 2 && choices.contains(where: \.isCorrect) {
-                    cards.append(Card(content: .multipleChoice(question: line, choices: choices.shuffled())))
+                    contents.append(.multipleChoice(question: line, choices: choices.shuffled()))
                 }
                 i = j
                 continue
@@ -63,6 +63,8 @@ enum MarkdownParser {
             i += 1   // plain prose — ignored
         }
 
+        // Stamped after the loop, once the title heading (if any) has been seen.
+        let cards = contents.map { Card(content: $0, setID: filename, setTitle: title) }
         return FlashcardSet(id: filename, title: title, cards: cards)
     }
 

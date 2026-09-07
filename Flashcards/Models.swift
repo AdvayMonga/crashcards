@@ -16,6 +16,25 @@ enum CardContent: Hashable {
 struct Card: Identifiable, Hashable {
     let id = UUID()
     let content: CardContent
+    /// Where the card came from — filename and title of its `.md`. Used to group flags.
+    let setID: String
+    let setTitle: String
+
+    /// The side shown first: the front, or the question.
+    var prompt: String {
+        switch content {
+        case .flip(let front, _): return front
+        case .multipleChoice(let question, _): return question
+        }
+    }
+
+    /// The correct response: the back, or the correct choice.
+    var answer: String {
+        switch content {
+        case .flip(_, let back): return back
+        case .multipleChoice(_, let choices): return choices.first(where: \.isCorrect)?.text ?? ""
+        }
+    }
 }
 
 /// One `.md` file's worth of cards. `id` is the filename (unique within the folder).

@@ -1,10 +1,9 @@
 import SwiftUI
 
-/// Settings: manage the attached flashcard folders (add / remove).
+/// Settings tab: manage the attached flashcard folders (add / remove).
 struct SettingsView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(FlagStore.self) private var flags
-    @Environment(\.dismiss) private var dismiss
     @State private var importing = false
 
     var body: some View {
@@ -26,14 +25,6 @@ struct SettingsView: View {
                         Label("Add Folder…", systemImage: "plus")
                     }
                 }
-                Section("Focus") {
-                    NavigationLink {
-                        BlockingView()
-                    } label: {
-                        Label("App Blocking", systemImage: "hand.raised")
-                    }
-                }
-
                 Section {
                     LabeledContent("Sets loaded", value: "\(library.sets.count)")
                     LabeledContent("Flagged cards", value: "\(flags.flags.count)")
@@ -42,12 +33,6 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result { library.addFolder(url) }
             }

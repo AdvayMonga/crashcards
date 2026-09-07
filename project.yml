@@ -17,10 +17,15 @@ targets:
     platform: iOS
     sources:
       - path: Flashcards
+    dependencies:
+      - target: ShieldConfig
+      - target: DeviceActivityMonitorExt
     entitlements:
       path: Flashcards/Flashcards.entitlements
       properties:
         com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.advaymonga.Flashcards
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards
@@ -32,3 +37,51 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Used to hear your spoken answers during voice study."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Used to understand your spoken answers during voice study."
+
+  # Customizes the system block screen. Shares BlockingShared with the app.
+  ShieldConfig:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShieldConfig
+      - path: Flashcards/BlockingShared.swift
+    info:
+      path: ShieldConfig/Info.plist
+      properties:
+        CFBundleDisplayName: ShieldConfig
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettings.shield-configuration-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldConfigurationExtension
+    entitlements:
+      path: ShieldConfig/ShieldConfig.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.advaymonga.Flashcards
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.ShieldConfig
+
+  # Re-applies the shield when an unlock window expires, with the app closed.
+  DeviceActivityMonitorExt:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: DeviceActivityMonitorExt
+      - path: Flashcards/BlockingShared.swift
+    info:
+      path: DeviceActivityMonitorExt/Info.plist
+      properties:
+        CFBundleDisplayName: DeviceActivityMonitor
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.deviceactivity.monitor-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).DeviceActivityMonitorExtension
+    entitlements:
+      path: DeviceActivityMonitorExt/DeviceActivityMonitorExt.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.advaymonga.Flashcards
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.DeviceActivityMonitor

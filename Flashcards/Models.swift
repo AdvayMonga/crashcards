@@ -37,6 +37,15 @@ struct Card: Identifiable, Hashable {
     }
 }
 
+/// How a session presents its cards. Both modes draw from the same sets.
+enum StudyMode: String, Identifiable, CaseIterable {
+    case flashcards   // prompt → tap to reveal the answer
+    case quiz         // multiple-choice options to pick from
+
+    var id: String { rawValue }
+    var title: String { self == .flashcards ? "Flashcards" : "Quiz" }
+}
+
 /// One `.md` file's worth of cards. `id` is the filename (unique within the folder).
 struct FlashcardSet: Identifiable, Hashable {
     let id: String

@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// Classic study: one card at a time. Flip cards tap to reveal; multiple-choice cards
-/// tap an option. Swipe or arrows move between cards; shuffle restarts.
+/// One card at a time, in the chosen mode. Flashcards mode reveals the answer on tap —
+/// for a multiple-choice card that answer is its correct option. Quiz mode shows the
+/// options to pick from. Swipe or arrows move between cards; shuffle restarts.
 struct StudyView: View {
     @State var session: StudySession
+    let mode: StudyMode
     @State private var picked: Choice?          // selected option for the current MC card
     @State private var flagging = false
     @Environment(FlagStore.self) private var flags
@@ -18,14 +20,14 @@ struct StudyView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
                 currentCard
-                if currentIsFlip && session.isFlipped {
+                if currentIsReveal && session.isFlipped {
                     gradeBar
                 }
                 controls
             }
         }
         .padding()
-        .navigationTitle("Classic")
+        .navigationTitle(mode.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)   // disable the edge swipe-back-to-home
         .toolbar {
@@ -71,7 +73,11 @@ struct StudyView: View {
                 case .flip(let front, let back):
                     flipCard(front: front, back: back)
                 case .multipleChoice(let question, let choices):
-                    mcCard(question: question, choices: choices)
+                    if mode == .quiz {
+                        mcCard(question: question, choices: choices)
+                    } else {
+                        flipCard(front: question, back: card.answer)
+                    }
                 }
             }
             .contentShape(Rectangle())
@@ -155,7 +161,7 @@ struct StudyView: View {
             .buttonStyle(.bordered)
             .disabled(session.position == 0)
 
-            if currentIsFlip {
+            if currentIsReveal {
                 Button(session.isFlipped ? "Hide" : "Flip") { session.flip() }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
@@ -233,10 +239,11 @@ struct StudyView: View {
 
     // MARK: - Helpers
 
-    private var currentIsFlip: Bool {
+    /// True when the current card is shown as a reveal card rather than pickable options.
+    private var currentIsReveal: Bool {
         guard let content = session.current?.content else { return false }
         if case .flip = content { return true }
-        return false
+        return mode == .flashcards
     }
 
     /// A decisive horizontal swipe moves cards: left = next, right = previous.

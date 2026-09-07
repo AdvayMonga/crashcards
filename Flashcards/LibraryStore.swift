@@ -8,6 +8,12 @@ final class LibraryStore {
     var loadError: String?
 
     var hasFolders: Bool { FolderAccess.hasFolders }
+
+    /// Cards the unlock quiz draws from: your selected sets, or everything if none are selected.
+    var quizCards: [Card] {
+        let selected = sets.filter { Prefs.selectedSetIDs.contains($0.id) }
+        return (selected.isEmpty ? sets : selected).flatMap(\.cards)
+    }
     var folders: [AttachedFolder] { FolderAccess.folders }
 
     /// Re-read and parse all attached folders. No-op (empties) if none are set.

@@ -1,19 +1,15 @@
 import SwiftUI
 
-/// Home screen: pick which sets to study, then start a shuffled Classic session.
+/// Home screen: pick which sets to study, then start a shuffled session in either mode.
 struct SetListView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(FlagStore.self) private var flags
     @State private var selected: Set<String> = Prefs.selectedSetIDs
-    @State private var studying = false
+    @State private var studyMode: StudyMode?
     @State private var studyingVoice = false
-    @State private var showSettings = false
 
     private var selectedSets: [FlashcardSet] {
         library.sets.filter { selected.contains($0.id) }
-    }
-    private var selectedCardCount: Int {
-        selectedSets.reduce(0) { $0 + $1.cards.count }
     }
     private var allSelected: Bool {
         !library.sets.isEmpty && selected.isSuperset(of: library.sets.map(\.id))
@@ -25,14 +21,11 @@ struct SetListView: View {
                 .navigationTitle("Sets")
                 .toolbar { toolbarContent }
                 .safeAreaInset(edge: .bottom) { studyBar }
-                .navigationDestination(isPresented: $studying) {
-                    StudyView(session: StudySession(sets: selectedSets))
+                .navigationDestination(item: $studyMode) { mode in
+                    StudyView(session: StudySession(sets: selectedSets), mode: mode)
                 }
                 .navigationDestination(isPresented: $studyingVoice) {
                     VoiceStudyView(session: StudySession(sets: selectedSets))
-                }
-                .sheet(isPresented: $showSettings) {
-                    SettingsView().environment(library).environment(flags)
                 }
         }
         .onChange(of: library.sets.map(\.id)) { _, ids in
@@ -76,23 +69,31 @@ struct SetListView: View {
 
     @ViewBuilder private var studyBar: some View {
         if !library.sets.isEmpty {
-            HStack(spacing: 12) {
-                Button { studying = true } label: {
-                    Text(selectedSets.isEmpty ? "Select sets to study"
-                                              : "Study \(selectedCardCount) cards")
-                        .frame(maxWidth: .infinity)
+            VStack(spacing: 8) {
+                if selectedSets.isEmpty {
+                    Text("Pick a set to start.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(selectedSets.isEmpty)
 
-                Button { studyingVoice = true } label: {
-                    Image(systemName: "mic.fill")
+                HStack(spacing: 12) {
+                    Button { studyMode = .flashcards } label: {
+                        Text("Flashcards").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button { studyMode = .quiz } label: {
+                        Text("Quiz").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+
                 }
-                .buttonStyle(.bordered)
+                .controlSize(.large)
                 .disabled(selectedSets.isEmpty)
             }
-            .controlSize(.large)
-            .padding()
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 20)
             .background(.bar)
         }
     }
@@ -104,7 +105,10 @@ struct SetListView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button { showSettings = true } label: { Image(systemName: "gearshape") }
+            Button { studyingVoice = true } label: {
+                Label("Voice", systemImage: "mic.fill")
+            }
+            .disabled(selectedSets.isEmpty)
         }
     }
 

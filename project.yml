@@ -11,6 +11,17 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
+# Only the app is meant to be run; the extensions ship inside it.
+schemes:
+  Flashcards:
+    build:
+      targets:
+        Flashcards: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
 targets:
   Flashcards:
     type: application

@@ -3,6 +3,9 @@ CLAUDE.md
 PLAN.md
 HANDOFF.md
 
+# --- Claude Code local state (worktrees, settings) ---
+.claude/
+
 # --- macOS ---
 .DS_Store
 .AppleDouble

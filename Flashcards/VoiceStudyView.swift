@@ -4,6 +4,7 @@ import SwiftUI
 struct VoiceStudyView: View {
     @State private var controller: VoiceStudyController
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     init(session: StudySession) {
         _controller = State(initialValue: VoiceStudyController(session: session))
@@ -22,8 +23,18 @@ struct VoiceStudyView: View {
                 .font(.headline)
                 .multilineTextAlignment(.center)
 
+            if controller.permissionDenied {
+                permissionHelp
+            } else if let error = controller.errorText {
+                Text(error)
+                    .font(.subheadline)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+
             if let card = controller.session.current {
-                Text(cardPrompt(card))
+                Text(card.prompt)
                     .font(.title3)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
@@ -48,17 +59,30 @@ struct VoiceStudyView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .tint(controller.isRunning ? .red : .accentColor)
+            .disabled(controller.session.isEmpty || controller.permissionDenied)
         }
         .padding()
         .navigationTitle("Voice")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { controller.stop() }
+        .onChange(of: scenePhase) { _, phase in
+            // Backgrounding tears down the audio route; stop rather than hang mid-card.
+            if phase != .active, controller.isRunning { controller.stop() }
+        }
     }
 
-    private func cardPrompt(_ card: Card) -> String {
-        switch card.content {
-        case .flip(let front, _): return front
-        case .multipleChoice(let question, _): return question
+    /// Permission can only be re-granted in Settings, so link straight there.
+    private var permissionHelp: some View {
+        VStack(spacing: 12) {
+            Text("Voice study needs microphone and speech recognition access.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                Link("Open Settings", destination: url)
+                    .buttonStyle(.bordered)
+            }
         }
+        .padding(.horizontal)
     }
 }

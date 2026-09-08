@@ -2,9 +2,23 @@ import Foundation
 
 enum FolderError: LocalizedError {
     case noFolder
+    case primaryUnavailable
+    case duplicateFolder
+    case nestedFolder
+    case notAppFile(String)
+
     var errorDescription: String? {
         switch self {
-        case .noFolder: return "No flashcards folder has been chosen yet."
+        case .noFolder:
+            return "No flashcards folder has been chosen yet."
+        case .primaryUnavailable:
+            return "Your first flashcards folder isn't available right now, so \(FlagStore.filename) can't be read or written. It may be offline in iCloud, moved, or deleted — check it in Settings."
+        case .duplicateFolder:
+            return "That folder is already attached."
+        case .nestedFolder:
+            return "That folder overlaps one you've already added, so every set inside it would load twice."
+        case .notAppFile(let name):
+            return "Flashcards only ever writes \(FlagStore.filename); it refused to write “\(name)”."
         }
     }
 }
@@ -15,10 +29,36 @@ struct AttachedFolder: Identifiable, Hashable {
     let name: String
 }
 
+/// Problems found in one file. Reported to the user; the file is never modified.
+struct FileIssues: Identifiable, Hashable {
+    let id: String        // path shown to the user, unique per file
+    let filename: String
+    let issues: [ParseIssue]
+}
+
+/// Everything a folder scan produced: the sets, plus what went wrong along the way.
+struct LibraryLoad {
+    var sets: [FlashcardSet] = []
+    var fileIssues: [FileIssues] = []
+    var folderErrors: [String] = []
+}
+
+/// The result of reading a file the app owns, keeping "not there yet" distinct from
+/// "there but unreadable" — overwriting the latter would destroy the user's data.
+enum AppFileRead {
+    case missing
+    case contents(String)
+    case failure(String)
+}
+
 /// Persistent, sandbox-safe access to the user-picked flashcards folders.
 ///
 /// The user can attach several folders (each stored as a security-scoped bookmark); the app
 /// reads every `.md` under each one, recursively. No paths are hardcoded.
+///
+/// Read-only by design: the *only* file this app ever writes is `Flagged.md`, in the first
+/// attached folder. `writeAppFile` refuses anything else, so a source deck can never be
+/// modified by the app.
 enum FolderAccess {
     private static let bookmarksKey = "flashcardsFolderBookmarks"
     private static var defaults: UserDefaults { .standard }
@@ -32,26 +72,28 @@ enum FolderAccess {
 
     static var hasFolders: Bool { !bookmarks().isEmpty }
 
-    /// Attached folders for display, skipping any that no longer resolve.
+    /// Attached folders for display. Ones that no longer resolve are still listed — under a
+    /// placeholder name — so the user can remove them instead of wondering where they went.
     static var folders: [AttachedFolder] {
-        bookmarks().enumerated().compactMap { index, data in
-            guard let url = try? resolve(data) else { return nil }
-            return AttachedFolder(id: index, name: url.lastPathComponent)
+        bookmarks().enumerated().map { index, data in
+            let name = (try? resolve(data))?.lastPathComponent ?? "Unavailable folder"
+            return AttachedFolder(id: index, name: name)
         }
     }
 
-    /// Attach a folder the user just picked (ignores exact duplicates).
+    /// Attach a folder the user just picked.
     static func addFolder(_ url: URL) throws {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let data = try url.bookmarkData()
 
-        var list = bookmarks()
         let newPath = url.standardizedFileURL.path
-        let existing = list.compactMap { try? resolve($0).standardizedFileURL.path }
-        guard !existing.contains(newPath) else { return }
-        list.append(data)
-        saveBookmarks(list)
+        let existing = bookmarks().compactMap { try? resolve($0).standardizedFileURL.path }
+        guard !existing.contains(newPath) else { throw FolderError.duplicateFolder }
+        guard !existing.contains(where: { contains($0, newPath) || contains(newPath, $0) })
+        else { throw FolderError.nestedFolder }
+
+        let data = try url.bookmarkData()
+        saveBookmarks(bookmarks() + [data])
     }
 
     static func removeFolder(at index: Int) {
@@ -62,35 +104,76 @@ enum FolderAccess {
     }
 
     /// Read + parse every `.md` under every attached folder (recursively), sorted by title.
-    static func loadSets() throws -> [FlashcardSet] {
+    /// Files and folders that fail are reported in the result, never skipped silently.
+    static func loadSets() throws -> LibraryLoad {
         var list = bookmarks()
         guard !list.isEmpty else { throw FolderError.noFolder }
 
-        var sets: [FlashcardSet] = []
+        var load = LibraryLoad()
         var seenIDs = Set<String>()
         var changed = false
 
         for i in list.indices {
             var stale = false
             guard let folder = try? URL(resolvingBookmarkData: list[i], bookmarkDataIsStale: &stale)
-            else { continue }
+            else {
+                load.folderErrors.append(
+                    "Folder \(i + 1) couldn't be opened. It may have been moved, deleted, or not yet downloaded from iCloud. Remove and re-add it in Settings."
+                )
+                continue
+            }
             let scoped = folder.startAccessingSecurityScopedResource()
             defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
             if stale, let fresh = try? folder.bookmarkData() { list[i] = fresh; changed = true }
 
-            for url in markdownFiles(in: folder) {
-                guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
-                let parsed = MarkdownParser.parse(text, filename: url.lastPathComponent)
-                guard !parsed.cards.isEmpty else { continue }
-                sets.append(uniquelyIdentified(parsed, seen: &seenIDs))
+            guard let files = markdownFiles(in: folder) else {
+                load.folderErrors.append("Couldn't list the contents of “\(folder.lastPathComponent)”.")
+                continue
+            }
+            if files.isEmpty && !scoped {
+                load.folderErrors.append(
+                    "Permission to read “\(folder.lastPathComponent)” was lost. Remove and re-add it in Settings."
+                )
+                continue
+            }
+
+            for url in files {
+                let name = url.lastPathComponent
+                guard let text = readText(at: url) else {
+                    load.fileIssues.append(FileIssues(
+                        id: url.path, filename: name,
+                        issues: [ParseIssue(line: 0, kind: .notText, excerpt: "")]
+                    ))
+                    continue
+                }
+                let parsed = MarkdownParser.parse(text, filename: name)
+                if !parsed.issues.isEmpty {
+                    load.fileIssues.append(FileIssues(id: url.path, filename: name, issues: parsed.issues))
+                }
+                guard !parsed.set.cards.isEmpty else { continue }
+                load.sets.append(uniquelyIdentified(parsed.set, seen: &seenIDs))
             }
         }
 
         if changed { saveBookmarks(list) }
-        return sets.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        load.sets.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        load.fileIssues.sort { $0.filename.localizedCaseInsensitiveCompare($1.filename) == .orderedAscending }
+        return load
     }
 
     // MARK: - Helpers
+
+    /// Is `path` inside directory `parent`?
+    private static func contains(_ parent: String, _ path: String) -> Bool {
+        path.hasPrefix(parent.hasSuffix("/") ? parent : parent + "/")
+    }
+
+    /// UTF-8, falling back to whatever encoding the file declares. nil if it isn't text.
+    private static func readText(at url: URL) -> String? {
+        if let text = try? String(contentsOf: url, encoding: .utf8) { return text }
+        var encoding: String.Encoding = .utf8
+        return try? String(contentsOf: url, usedEncoding: &encoding)
+    }
 
     /// Filenames can collide across folders; give each set a unique id.
     private static func uniquelyIdentified(_ set: FlashcardSet, seen: inout Set<String>) -> FlashcardSet {
@@ -102,12 +185,17 @@ enum FolderAccess {
         return FlashcardSet(id: uid, title: set.title, cards: set.cards)
     }
 
-    private static func markdownFiles(in folder: URL) -> [URL] {
+    /// Every `.md` regular file under `folder`, or nil if the folder can't be enumerated.
+    private static func markdownFiles(in folder: URL) -> [URL]? {
         guard let enumerator = FileManager.default.enumerator(
-            at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-        ) else { return [] }
+            at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
+        ) else { return nil }
+
         var result: [URL] = []
         for case let url as URL in enumerator where url.pathExtension.lowercased() == "md" {
+            // A directory named "foo.md" is not a deck.
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
+            else { continue }
             // The app writes Flagged.md itself; don't read it back in as a set.
             guard url.lastPathComponent.caseInsensitiveCompare(FlagStore.filename) != .orderedSame
             else { continue }
@@ -118,26 +206,62 @@ enum FolderAccess {
 
     // MARK: - App-written files
 
-    /// The first attached folder that still resolves — where app-written files go.
-    private static func primaryFolder() -> URL? {
-        bookmarks().lazy.compactMap { try? resolve($0) }.first
+    /// The first attached folder. Deliberately *not* "the first one that resolves": app files
+    /// must always live in the same place, so an offline folder is an error, not a silent move.
+    private static func primaryFolder() throws -> URL {
+        guard let data = bookmarks().first else { throw FolderError.noFolder }
+        guard let url = try? resolve(data) else { throw FolderError.primaryUnavailable }
+        return url
     }
 
-    /// Read a file the app owns from the primary folder, or nil if it isn't there yet.
-    static func readAppFile(_ name: String) -> String? {
-        guard let folder = primaryFolder() else { return nil }
+    /// Read a file the app owns from the primary folder.
+    static func readAppFile(_ name: String) -> AppFileRead {
+        let folder: URL
+        do {
+            folder = try primaryFolder()
+        } catch FolderError.noFolder {
+            return .missing
+        } catch {
+            return .failure(error.localizedDescription)
+        }
+
         let scoped = folder.startAccessingSecurityScopedResource()
         defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
-        return try? String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8)
+
+        let url = folder.appendingPathComponent(name)
+        guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
+        do {
+            return .contents(try String(contentsOf: url, encoding: .utf8))
+        } catch {
+            return .failure(error.localizedDescription)
+        }
     }
 
-    /// Write a file the app owns into the primary folder.
+    /// Write a file the app owns into the primary folder, atomically.
+    ///
+    /// Writes to a hidden temp file first and swaps it in, so a failure part-way through
+    /// leaves the existing file intact rather than truncated.
     static func writeAppFile(_ name: String, contents: String) throws {
-        guard let folder = primaryFolder() else { throw FolderError.noFolder }
+        // The single point where this app can modify the user's folder. Keep it to one file.
+        guard name == FlagStore.filename else { throw FolderError.notAppFile(name) }
+
+        let folder = try primaryFolder()
         let scoped = folder.startAccessingSecurityScopedResource()
         defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
-        // Non-atomic: an atomic write needs to create a temp file in the scoped folder.
-        try contents.write(to: folder.appendingPathComponent(name), atomically: false, encoding: .utf8)
+
+        let target = folder.appendingPathComponent(name)
+        let temp = folder.appendingPathComponent(".\(name).tmp")
+        try contents.write(to: temp, atomically: false, encoding: .utf8)
+        do {
+            if FileManager.default.fileExists(atPath: target.path) {
+                _ = try FileManager.default.replaceItemAt(target, withItemAt: temp)
+            } else {
+                try FileManager.default.moveItem(at: temp, to: target)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
     }
 
     private static func resolve(_ data: Data) throws -> URL {

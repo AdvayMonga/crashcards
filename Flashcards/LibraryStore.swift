@@ -5,7 +5,14 @@ import Observation
 @Observable
 final class LibraryStore {
     private(set) var sets: [FlashcardSet] = []
+    /// Per-file format problems from the last scan. Reported only — files are never edited.
+    private(set) var fileIssues: [FileIssues] = []
+    /// Folders that couldn't be opened or listed.
+    private(set) var folderErrors: [String] = []
+    /// Set when the scan couldn't run at all.
     var loadError: String?
+    /// Set when attaching a folder failed.
+    var importError: String?
 
     var hasFolders: Bool { FolderAccess.hasFolders }
 
@@ -16,18 +23,29 @@ final class LibraryStore {
     }
     var folders: [AttachedFolder] { FolderAccess.folders }
 
+    var issueCount: Int {
+        folderErrors.count + fileIssues.reduce(0) { $0 + $1.issues.count }
+    }
+
     /// Re-read and parse all attached folders. No-op (empties) if none are set.
     func reload() {
         guard FolderAccess.hasFolders else {
             sets = []
+            fileIssues = []
+            folderErrors = []
             loadError = nil
             return
         }
         do {
-            sets = try FolderAccess.loadSets()
+            let load = try FolderAccess.loadSets()
+            sets = load.sets
+            fileIssues = load.fileIssues
+            folderErrors = load.folderErrors
             loadError = nil
         } catch {
             sets = []
+            fileIssues = []
+            folderErrors = []
             loadError = error.localizedDescription
         }
     }
@@ -35,10 +53,16 @@ final class LibraryStore {
     func addFolder(_ url: URL) {
         do {
             try FolderAccess.addFolder(url)
+            importError = nil
             reload()
         } catch {
-            loadError = error.localizedDescription
+            importError = error.localizedDescription
         }
+    }
+
+    /// The system file picker itself failed (cancelled-with-error, permission denied, …).
+    func importFailed(_ error: Error) {
+        importError = error.localizedDescription
     }
 
     func removeFolder(at index: Int) {

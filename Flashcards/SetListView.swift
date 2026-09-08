@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Home screen: pick which sets to study, then start a shuffled session in either mode.
+/// Study tab: pick which sets to study, then start a shuffled session in one of the modes.
 struct SetListView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(FlagStore.self) private var flags
@@ -14,6 +14,9 @@ struct SetListView: View {
     private var allSelected: Bool {
         !library.sets.isEmpty && selected.isSuperset(of: library.sets.map(\.id))
     }
+    private var hasProblems: Bool {
+        library.issueCount > 0 || flags.loadError != nil
+    }
 
     var body: some View {
         NavigationStack {
@@ -22,10 +25,10 @@ struct SetListView: View {
                 .toolbar { toolbarContent }
                 .safeAreaInset(edge: .bottom) { studyBar }
                 .navigationDestination(item: $studyMode) { mode in
-                    StudyView(session: StudySession(sets: selectedSets), mode: mode)
+                    destination(for: mode) { StudyView(session: StudySession(cards: $0), mode: mode) }
                 }
                 .navigationDestination(isPresented: $studyingVoice) {
-                    VoiceStudyView(session: StudySession(sets: selectedSets))
+                    destination(for: .voice) { VoiceStudyView(session: StudySession(cards: $0)) }
                 }
         }
         .onChange(of: library.sets.map(\.id)) { _, ids in
@@ -36,19 +39,64 @@ struct SetListView: View {
         }
     }
 
+    /// A mode is only entered with cards it can actually present; otherwise it explains why.
+    @ViewBuilder
+    private func destination<V: View>(for mode: StudyMode,
+                                      @ViewBuilder study: ([Card]) -> V) -> some View {
+        if let reason = mode.unavailableReason(for: selectedSets) {
+            ModeUnavailableView(mode: mode, reason: reason)
+        } else {
+            study(mode.usableCards(in: selectedSets))
+        }
+    }
+
     @ViewBuilder private var content: some View {
         if let error = library.loadError {
-            ContentUnavailableView("Couldn't read folder", systemImage: "exclamationmark.triangle",
-                                   description: Text(error))
+            ContentUnavailableView {
+                Label("Couldn't read folder", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(error)
+            }
         } else if library.sets.isEmpty {
-            ContentUnavailableView("No sets found", systemImage: "tray",
-                                   description: Text("Add .md files to your flashcards folder."))
+            ContentUnavailableView {
+                Label("No sets found", systemImage: "tray")
+            } description: {
+                Text(hasProblems
+                     ? "Nothing here parsed into cards. See what's wrong with your files."
+                     : "Add .md files to your flashcards folder.")
+            } actions: {
+                if hasProblems {
+                    NavigationLink("View File Problems") {
+                        FileProblemsView().environment(library).environment(flags)
+                    }
+                }
+            }
         } else {
-            List(library.sets) { set in
-                Button { toggle(set.id) } label: { row(for: set) }
-                    .tint(.primary)
+            List {
+                if hasProblems {
+                    Section {
+                        NavigationLink {
+                            FileProblemsView().environment(library).environment(flags)
+                        } label: {
+                            Label(problemSummary, systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                Section {
+                    ForEach(library.sets) { set in
+                        Button { toggle(set.id) } label: { row(for: set) }
+                            .tint(.primary)
+                    }
+                }
             }
         }
+    }
+
+    private var problemSummary: String {
+        let count = library.issueCount
+        if count == 0 { return "\(FlagStore.filename) couldn't be read" }
+        return count == 1 ? "1 file problem found" : "\(count) file problems found"
     }
 
     private func row(for set: FlashcardSet) -> some View {
@@ -58,13 +106,21 @@ struct SetListView: View {
                 .font(.title3)
             VStack(alignment: .leading, spacing: 2) {
                 Text(set.title).font(.headline)
-                Text(set.cards.count == 1 ? "1 card" : "\(set.cards.count) cards")
+                Text(cardSummary(for: set))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
         }
         .contentShape(Rectangle())
+    }
+
+    /// Card count, split by kind so it's obvious which sets a quiz can use.
+    private func cardSummary(for set: FlashcardSet) -> String {
+        let total = set.cards.count == 1 ? "1 card" : "\(set.cards.count) cards"
+        let questions = set.multipleChoiceCount
+        guard questions > 0 else { return "\(total) · no questions" }
+        return "\(total) · \(questions) question\(questions == 1 ? "" : "s")"
     }
 
     @ViewBuilder private var studyBar: some View {

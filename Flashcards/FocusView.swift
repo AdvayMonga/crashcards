@@ -8,6 +8,9 @@ struct FocusView: View {
     @State private var pickerShown = false
     @State private var unlocking = false
     @State private var startAfterPicking = false
+    @State private var gatedApps = GatedApps.all
+    @State private var addingApp = false
+    @State private var copied: String?
 
     /// Keeps the countdown honest while the screen is open.
     private let tick = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
@@ -22,6 +25,8 @@ struct FocusView: View {
                 } footer: {
                     Text("Opening a blocked app shows a block screen. Answer \(ScreenTimeManager.questionsToUnlock) questions here to unlock everything for \(ScreenTimeManager.unlockMinutes) minutes.")
                 }
+
+                gatedSection
 
                 Section("Blocked apps") {
                     ForEach(Array(manager.selection.applicationTokens), id: \.self) { token in
@@ -39,10 +44,48 @@ struct FocusView: View {
             }
             .navigationTitle("Focus")
             .familyActivityPicker(isPresented: $pickerShown, selection: pickerBinding)
+            .sheet(isPresented: $addingApp) {
+                AddGatedAppView { app in
+                    GatedApps.add(app)
+                    gatedApps = GatedApps.all
+                }
+            }
             .sheet(isPresented: $unlocking) {
                 NavigationStack { UnlockView(cards: library.quizCards, manager: manager) }
             }
             .onReceive(tick) { _ in manager.refresh() }
+        }
+    }
+
+    /// Apps that hand you to the questions and take you back when you're done.
+    @ViewBuilder private var gatedSection: some View {
+        Section {
+            ForEach(gatedApps) { app in
+                Button {
+                    UIPasteboard.general.string = app.triggerURL
+                    copied = app.id
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(app.name).foregroundStyle(.primary)
+                            Text(copied == app.id ? "Link copied" : app.triggerURL)
+                                .font(.caption)
+                                .foregroundStyle(copied == app.id ? .green : .secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "doc.on.doc").foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .onDelete { offsets in
+                offsets.map { gatedApps[$0] }.forEach(GatedApps.remove)
+                gatedApps = GatedApps.all
+            }
+            Button("Add an app") { addingApp = true }
+        } header: {
+            Text("Straight to the questions")
+        } footer: {
+            Text("Set this up once per app in Shortcuts: Automation → When \(gatedApps.first?.name ?? "an app") is opened → Run Immediately → Open URL, pasted from the row above. Opening that app then jumps here for the questions and back to it when you pass.")
         }
     }
 

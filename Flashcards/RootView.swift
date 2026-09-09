@@ -1,15 +1,18 @@
 import SwiftUI
 
 /// Shows folder setup until a folder is chosen, then the three tabs.
-/// Re-scans the folders on first appearance and whenever the app returns to the foreground —
-/// and if apps are shielded when you arrive, puts the unlock questions in front of you.
+/// Re-scans the folders on first appearance and whenever the app returns to the foreground.
+/// A `flashcards://gate?app=…` link — sent by a Shortcuts automation when you open a gated
+/// app — goes straight to the questions, and back to that app once you've answered them.
 struct RootView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(FlagStore.self) private var flags
     @Environment(ScreenTimeManager.self) private var blocking
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
     @State private var tab = Tab.study
     @State private var unlocking = false
+    @State private var gateTarget: GatedApp?
 
     private enum Tab { case study, focus, settings }
 
@@ -28,6 +31,10 @@ struct RootView: View {
                 offerUnlock()
             }
         }
+        .onOpenURL { url in
+            guard let app = GatedApps.target(of: url) else { return }
+            openGate(for: app)
+        }
     }
 
     private var tabs: some View {
@@ -45,6 +52,11 @@ struct RootView: View {
         .sheet(isPresented: $unlocking) {
             NavigationStack { UnlockView(cards: library.quizCards, manager: blocking) }
         }
+        .fullScreenCover(item: $gateTarget) { app in
+            NavigationStack {
+                UnlockView(cards: library.quizCards, manager: blocking, target: app)
+            }
+        }
     }
 
     /// Re-read the folders and Flagged.md, so edits made in Obsidian show up here.
@@ -57,8 +69,18 @@ struct RootView: View {
 
     /// Arriving while blocked usually means you just tried to open a blocked app.
     private func offerUnlock() {
-        guard blocking.isShieldActive, !library.quizCards.isEmpty else { return }
+        guard gateTarget == nil, blocking.isShieldActive, !library.quizCards.isEmpty else { return }
         tab = .focus
         unlocking = true
+    }
+
+    /// Inside an unlock window there's nothing to earn, so pass straight through.
+    private func openGate(for app: GatedApp) {
+        unlocking = false
+        guard !blocking.isUnlockedNow, let url = app.returnURL else {
+            gateTarget = app
+            return
+        }
+        openURL(url) { opened in if !opened { gateTarget = app } }
     }
 }

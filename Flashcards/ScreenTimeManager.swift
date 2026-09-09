@@ -34,6 +34,9 @@ final class ScreenTimeManager {
         !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
     }
 
+    /// True while an unlock window is running.
+    var isUnlockedNow: Bool { BlockingShared.isUnlocked }
+
     /// True while apps are shielded — i.e. blocking is on and no unlock window is running.
     var isShieldActive: Bool { isBlocking && !BlockingShared.isUnlocked }
 
@@ -84,7 +87,7 @@ final class ScreenTimeManager {
         unlockedUntil = until
         BlockingShared.unlockedUntil = until
         BlockingShared.applyShield()
-        scheduleRelock(at: until)
+        if isBlocking { scheduleRelock(at: until) }
     }
 
     /// DeviceActivity schedules must span at least 15 minutes, so the window we care about is

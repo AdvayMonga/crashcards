@@ -8,6 +8,7 @@ struct SetListView: View {
     @State private var studyMode: StudyMode?
     @State private var studyingVoice = false
     @State private var importingFolder = false
+    @State private var importingSet = false
 
     private var selectedSets: [FlashcardSet] {
         library.sets.filter { selected.contains($0.id) }
@@ -37,6 +38,10 @@ struct SetListView: View {
         }
         .onChange(of: selected) { _, new in
             Prefs.selectedSetIDs = new
+        }
+        .sheet(isPresented: $importingSet) {
+            ImportSetView { library.reload() }
+                .environment(library)
         }
         .fileImporter(isPresented: $importingFolder, allowedContentTypes: [.folder]) { result in
             switch result {
@@ -72,8 +77,9 @@ struct SetListView: View {
                      ? "Nothing here parsed into cards. See what's wrong with your files."
                      : "Add a folder of set files, or keep your sets inside the app.")
             } actions: {
-                Button("Add a Folder") { importingFolder = true }
+                Button("New Set") { importingSet = true }
                     .buttonStyle(.borderedProminent)
+                Button("Add a Folder") { importingFolder = true }
                 if hasProblems {
                     NavigationLink("View File Problems") {
                         FileProblemsView().environment(library).environment(flags)
@@ -174,6 +180,11 @@ struct SetListView: View {
                 Label("Voice", systemImage: "mic.fill")
             }
             .disabled(selectedSets.isEmpty)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { importingSet = true } label: {
+                Label("New Set", systemImage: "plus")
+            }
         }
     }
 

@@ -273,6 +273,30 @@ enum FolderAccess {
         }
     }
 
+    /// Create a *new* set file in the primary folder. Never overwrites: a clashing name
+    /// gets a numbered suffix, so an import can't clobber a deck you already had.
+    @discardableResult
+    static func createSetFile(named title: String, contents: String) throws -> URL {
+        let folder = try primaryFolder()
+        let scoped = folder.startAccessingSecurityScopedResource()
+        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+
+        let base = title
+            .components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|"))
+            .joined(separator: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = base.isEmpty ? "Set" : String(base.prefix(60))
+
+        var url = folder.appendingPathComponent("\(name).md")
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = folder.appendingPathComponent("\(name) \(n).md")
+            n += 1
+        }
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
     private static func resolve(_ data: Data) throws -> URL {
         var stale = false
         return try URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale)

@@ -27,15 +27,11 @@ final class LibraryStore {
         folderErrors.count + fileIssues.reduce(0) { $0 + $1.issues.count }
     }
 
-    /// Re-read and parse all attached folders. No-op (empties) if none are set.
+    /// True when there's nowhere for a new set to go but the app's own library.
+    var hasLocalSets: Bool { !LocalLibrary.isEmpty }
+
+    /// Re-read and parse the local library and every attached folder.
     func reload() {
-        guard FolderAccess.hasFolders else {
-            sets = []
-            fileIssues = []
-            folderErrors = []
-            loadError = nil
-            return
-        }
         do {
             let load = try FolderAccess.loadSets()
             sets = load.sets

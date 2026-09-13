@@ -7,6 +7,7 @@ struct SetListView: View {
     @State private var selected: Set<String> = Prefs.selectedSetIDs
     @State private var studyMode: StudyMode?
     @State private var studyingVoice = false
+    @State private var importingFolder = false
 
     private var selectedSets: [FlashcardSet] {
         library.sets.filter { selected.contains($0.id) }
@@ -37,6 +38,12 @@ struct SetListView: View {
         .onChange(of: selected) { _, new in
             Prefs.selectedSetIDs = new
         }
+        .fileImporter(isPresented: $importingFolder, allowedContentTypes: [.folder]) { result in
+            switch result {
+            case .success(let url): library.addFolder(url)
+            case .failure(let error): library.importFailed(error)
+            }
+        }
     }
 
     /// A mode is only entered with cards it can actually present; otherwise it explains why.
@@ -59,12 +66,14 @@ struct SetListView: View {
             }
         } else if library.sets.isEmpty {
             ContentUnavailableView {
-                Label("No sets found", systemImage: "tray")
+                Label("No cards yet", systemImage: "tray")
             } description: {
                 Text(hasProblems
                      ? "Nothing here parsed into cards. See what's wrong with your files."
-                     : "Add .md files to your flashcards folder.")
+                     : "Add a folder of set files, or keep your sets inside the app.")
             } actions: {
+                Button("Add a Folder") { importingFolder = true }
+                    .buttonStyle(.borderedProminent)
                 if hasProblems {
                     NavigationLink("View File Problems") {
                         FileProblemsView().environment(library).environment(flags)

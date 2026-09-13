@@ -54,7 +54,8 @@ enum AppFileRead {
 /// Persistent, sandbox-safe access to the user-picked flashcards folders.
 ///
 /// The user can attach several folders (each stored as a security-scoped bookmark); the app
-/// reads every `.md` under each one, recursively. No paths are hardcoded.
+/// reads every set file under each one, recursively. No paths are hardcoded. The app's own
+/// local library is always scanned too, so no folder is required to use the app.
 ///
 /// Read-only by design: the *only* file this app ever writes is `Flagged.md`, in the first
 /// attached folder. `writeAppFile` refuses anything else, so a source deck can never be
@@ -103,15 +104,20 @@ enum FolderAccess {
         saveBookmarks(list)
     }
 
-    /// Read + parse every `.md` under every attached folder (recursively), sorted by title.
-    /// Files and folders that fail are reported in the result, never skipped silently.
+    /// Read + parse every set file in the local library and under every attached folder
+    /// (recursively), sorted by title. Files and folders that fail are reported in the
+    /// result, never skipped silently.
     static func loadSets() throws -> LibraryLoad {
         var list = bookmarks()
-        guard !list.isEmpty else { throw FolderError.noFolder }
 
         var load = LibraryLoad()
         var seenIDs = Set<String>()
         var changed = false
+
+        // The app's own sets, always present and needing no permission.
+        if let local = try? LocalLibrary.files() {
+            for url in local { read(url, into: &load, seen: &seenIDs) }
+        }
 
         for i in list.indices {
             var stale = false
@@ -137,22 +143,7 @@ enum FolderAccess {
                 continue
             }
 
-            for url in files {
-                let name = url.lastPathComponent
-                guard let text = readText(at: url) else {
-                    load.fileIssues.append(FileIssues(
-                        id: url.path, filename: name,
-                        issues: [ParseIssue(line: 0, kind: .notText, excerpt: "")]
-                    ))
-                    continue
-                }
-                let parsed = MarkdownParser.parse(text, filename: name)
-                if !parsed.issues.isEmpty {
-                    load.fileIssues.append(FileIssues(id: url.path, filename: name, issues: parsed.issues))
-                }
-                guard !parsed.set.cards.isEmpty else { continue }
-                load.sets.append(uniquelyIdentified(parsed.set, seen: &seenIDs))
-            }
+            for url in files { read(url, into: &load, seen: &seenIDs) }
         }
 
         if changed { saveBookmarks(list) }
@@ -162,6 +153,24 @@ enum FolderAccess {
     }
 
     // MARK: - Helpers
+
+    /// Parse one set file into the load, recording why it failed instead of dropping it.
+    private static func read(_ url: URL, into load: inout LibraryLoad, seen: inout Set<String>) {
+        let name = url.lastPathComponent
+        guard let text = readText(at: url) else {
+            load.fileIssues.append(FileIssues(
+                id: url.path, filename: name,
+                issues: [ParseIssue(line: 0, kind: .notText, excerpt: "")]
+            ))
+            return
+        }
+        let parsed = SetFile.parse(text, filename: name)
+        if !parsed.issues.isEmpty {
+            load.fileIssues.append(FileIssues(id: url.path, filename: name, issues: parsed.issues))
+        }
+        guard !parsed.set.cards.isEmpty else { return }
+        load.sets.append(uniquelyIdentified(parsed.set, seen: &seen))
+    }
 
     /// Is `path` inside directory `parent`?
     private static func contains(_ parent: String, _ path: String) -> Bool {
@@ -185,14 +194,14 @@ enum FolderAccess {
         return FlashcardSet(id: uid, title: set.title, cards: set.cards)
     }
 
-    /// Every `.md` regular file under `folder`, or nil if the folder can't be enumerated.
+    /// Every readable set file under `folder`, or nil if the folder can't be enumerated.
     private static func markdownFiles(in folder: URL) -> [URL]? {
         guard let enumerator = FileManager.default.enumerator(
             at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
         ) else { return nil }
 
         var result: [URL] = []
-        for case let url as URL in enumerator where url.pathExtension.lowercased() == "md" {
+        for case let url as URL in enumerator where SetFile.canRead(url) {
             // A directory named "foo.md" is not a deck.
             guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
             else { continue }

@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Shows folder setup until a folder is chosen, then the three tabs.
+/// The three tabs. A folder is optional — the app's own library works on its own — so
+/// setup is offered from the Study tab's empty state, not demanded up front.
 /// Re-scans the folders on first appearance and whenever the app returns to the foreground —
 /// and if apps are shielded when you arrive, puts the unlock questions in front of you.
 struct RootView: View {
@@ -14,20 +15,14 @@ struct RootView: View {
     private enum Tab { case study, focus, settings }
 
     var body: some View {
-        Group {
-            if library.hasFolders {
-                tabs
-            } else {
-                FolderSetupView()
+        tabs
+            .task { reload() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    reload()
+                    offerUnlock()
+                }
             }
-        }
-        .task { reload() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                reload()
-                offerUnlock()
-            }
-        }
     }
 
     private var tabs: some View {

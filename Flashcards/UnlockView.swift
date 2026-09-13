@@ -87,6 +87,7 @@ struct UnlockView: View {
     /// Hand you back to the app you were opening.
     private func goToTarget(_ app: GatedApp) {
         guard let url = app.returnURL else { returnFailed = true; return }
+        GatedApps.recordRedirect(to: app)
         openURL(url) { opened in returnFailed = !opened }
     }
 

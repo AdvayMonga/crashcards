@@ -64,6 +64,10 @@ struct FocusView: View {
                 Button {
                     UIPasteboard.general.string = app.triggerURL
                     copied = app.id
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        if copied == app.id { copied = nil }
+                    }
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {

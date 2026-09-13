@@ -11,8 +11,15 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     @State private var tab = Tab.study
-    @State private var unlocking = false
-    @State private var gateTarget: GatedApp?
+    @State private var prompt: GatePrompt?
+
+    /// A request to show the questions: from a gate link, which has an app to return to,
+    /// or from arriving while shielded, which doesn't. One piece of state for both, so the
+    /// two can't race to present over each other on the same foreground.
+    private struct GatePrompt: Identifiable {
+        let id = UUID()
+        var target: GatedApp?
+    }
 
     private enum Tab { case study, focus, settings }
 
@@ -32,8 +39,13 @@ struct RootView: View {
             }
         }
         .onOpenURL { url in
-            guard let app = GatedApps.target(of: url) else { return }
-            openGate(for: app)
+            guard GatedApps.isGate(url) else { return }
+            openGate(for: GatedApps.target(of: url))
+        }
+        .fullScreenCover(item: $prompt) { request in
+            NavigationStack {
+                UnlockView(cards: library.quizCards, manager: blocking, target: request.target)
+            }
         }
     }
 
@@ -49,14 +61,6 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(Tab.settings)
         }
-        .sheet(isPresented: $unlocking) {
-            NavigationStack { UnlockView(cards: library.quizCards, manager: blocking) }
-        }
-        .fullScreenCover(item: $gateTarget) { app in
-            NavigationStack {
-                UnlockView(cards: library.quizCards, manager: blocking, target: app)
-            }
-        }
     }
 
     /// Re-read the folders and Flagged.md, so edits made in Obsidian show up here.
@@ -69,18 +73,19 @@ struct RootView: View {
 
     /// Arriving while blocked usually means you just tried to open a blocked app.
     private func offerUnlock() {
-        guard gateTarget == nil, blocking.isShieldActive, !library.quizCards.isEmpty else { return }
+        guard prompt == nil, blocking.isShieldActive, !library.quizCards.isEmpty else { return }
         tab = .focus
-        unlocking = true
+        prompt = GatePrompt(target: nil)
     }
 
-    /// Inside an unlock window there's nothing to earn, so pass straight through.
-    private func openGate(for app: GatedApp) {
-        unlocking = false
-        guard !blocking.isUnlockedNow, let url = app.returnURL else {
-            gateTarget = app
+    /// Inside an unlock window there's nothing left to earn, so hand the user straight on.
+    private func openGate(for app: GatedApp?) {
+        guard blocking.isUnlockedNow else {
+            prompt = GatePrompt(target: app)
             return
         }
-        openURL(url) { opened in if !opened { gateTarget = app } }
+        guard let app, let url = app.returnURL, !GatedApps.justRedirected(to: app) else { return }
+        GatedApps.recordRedirect(to: app)
+        openURL(url) { opened in if !opened { prompt = GatePrompt(target: app) } }
     }
 }

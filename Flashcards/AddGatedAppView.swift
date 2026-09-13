@@ -31,7 +31,12 @@ struct AddGatedAppView: View {
                         onAdd(GatedApp(id: slug, name: customName.trimmed, scheme: customScheme.trimmed))
                         dismiss()
                     }
-                    .disabled(slug.isEmpty || customScheme.trimmed.isEmpty)
+                    .disabled(slug.isEmpty || customScheme.trimmed.isEmpty || existing.contains(slug))
+                    if existing.contains(slug) {
+                        Text("\(customName.trimmed) is already on the list.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text("Something else")
                 } footer: {

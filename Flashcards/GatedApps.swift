@@ -57,12 +57,32 @@ enum GatedApps {
         all = all.filter { $0.id != app.id }
     }
 
-    /// Parses `flashcards://gate?app=linkedin` into the app it names.
+    static func isGate(_ url: URL) -> Bool {
+        url.scheme == "flashcards" && url.host == "gate"
+    }
+
+    /// The app `flashcards://gate?app=linkedin` names, or nil if we don't know it — the
+    /// gate still opens in that case, it just has nowhere to send you afterwards.
     static func target(of url: URL) -> GatedApp? {
-        guard url.scheme == "flashcards", url.host == "gate",
+        guard isGate(url),
               let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                   .queryItems?.first(where: { $0.name == "app" })?.value
         else { return nil }
         return find(id)
+    }
+
+    /// The app we last handed the user to, and when.
+    private static var lastRedirect: (id: String, at: Date)?
+
+    static func recordRedirect(to app: GatedApp) {
+        lastRedirect = (app.id, Date())
+    }
+
+    /// Deep-linking into an app trips its own "when opened" automation, which sends us
+    /// another gate link seconds later. Redirecting again would bounce forever, so a gate
+    /// that arrives right behind our own redirect is ignored.
+    static func justRedirected(to app: GatedApp) -> Bool {
+        guard let lastRedirect, lastRedirect.id == app.id else { return false }
+        return Date().timeIntervalSince(lastRedirect.at) < 3
     }
 }

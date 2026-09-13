@@ -37,6 +37,7 @@ targets:
     dependencies:
       - target: ShieldConfig
       - target: DeviceActivityMonitorExt
+      - target: ShareExtension
     entitlements:
       path: Flashcards/Flashcards.entitlements
       properties:
@@ -102,3 +103,31 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.DeviceActivityMonitor
+
+  # Captures text shared from other apps; the app parses it, with a preview.
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+      - path: Flashcards/SharedInbox.swift
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Flashcards
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsFileWithMaxCount: 1
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.advaymonga.Flashcards
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.ShareExtension

@@ -16,6 +16,7 @@ struct ParseIssue: Identifiable, Hashable {
         case orphanOptions
         case blankLineBeforeOptions
         case notText          // produced by FolderAccess, not the parser
+        case shortRow         // produced by DelimitedParser: a row with nothing to answer
     }
 
     let id = UUID()
@@ -48,6 +49,8 @@ struct ParseIssue: Identifiable, Hashable {
             return "The options are separated from their question by a blank line."
         case .notText:
             return "This file isn't readable as text, so it was skipped."
+        case .shortRow:
+            return "This row has only one column, so there's no answer to show."
         }
     }
 
@@ -61,6 +64,8 @@ struct ParseIssue: Identifiable, Hashable {
             return MarkdownParser.questionExample
         case .noCards, .notText:
             return MarkdownParser.formatGuide
+        case .shortRow:
+            return DelimitedParser.formatGuide
         }
     }
 }
@@ -101,9 +106,7 @@ enum MarkdownParser {
     """
 
     static func parse(_ text: String, filename: String) -> ParsedFile {
-        var title = filename.replacingOccurrences(
-            of: #"\.md$"#, with: "", options: [.regularExpression, .caseInsensitive]
-        )
+        var title = SetFile.title(from: filename)
         var titleFromHeading = false
         var contents: [CardContent] = []
         var issues: [ParseIssue] = []

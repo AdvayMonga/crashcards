@@ -11,7 +11,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Flashcard Folders") {
+                Section {
                     if library.folders.isEmpty {
                         Text("No folders attached").foregroundStyle(.secondary)
                     } else {
@@ -26,6 +26,10 @@ struct SettingsView: View {
                     Button { importing = true } label: {
                         Label("Add Folder…", systemImage: "plus")
                     }
+                } header: {
+                    Text("Flashcard Folders")
+                } footer: {
+                    Text("Optional. Sets also live inside the app, and both are read the same way. Files can be .md, .txt, .csv or .tsv.")
                 }
                 Section {
                     LabeledContent("Sets loaded", value: "\(library.sets.count)")

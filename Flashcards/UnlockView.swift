@@ -5,12 +5,16 @@ import SwiftUI
 struct UnlockView: View {
     let cards: [Card]
     let manager: ScreenTimeManager
+    /// The app you were headed to, when the questions came from a gate link.
+    var target: GatedApp?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     @State private var question: Question?
     @State private var picked: Choice?
     @State private var correct = 0
     @State private var unlocked = false
+    @State private var returnFailed = false
 
     private var needed: Int { ScreenTimeManager.questionsToUnlock }
 
@@ -57,14 +61,34 @@ struct UnlockView: View {
             Text("Unlocked for \(ScreenTimeManager.unlockMinutes) minutes")
                 .font(.title2.weight(.semibold))
                 .multilineTextAlignment(.center)
-            Text("Your apps re-block automatically when the time is up.")
+            Text(returnFailed
+                 ? "\(target?.name ?? "That app") didn't open. Check its link in Focus, or switch to it yourself."
+                 : "Your apps re-block automatically when the time is up.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(returnFailed ? .red : .secondary)
                 .multilineTextAlignment(.center)
-            Button("Done") { dismiss() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+            if let target {
+                Button("Open \(target.name)") { goToTarget(target) }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+            }
+            if target == nil {
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+            } else {
+                Button("Stay here") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+            }
         }
+    }
+
+    /// Hand you back to the app you were opening.
+    private func goToTarget(_ app: GatedApp) {
+        guard let url = app.returnURL else { returnFailed = true; return }
+        GatedApps.recordRedirect(to: app)
+        openURL(url) { opened in returnFailed = !opened }
     }
 
     private func choiceRow(_ choice: Choice) -> some View {
@@ -98,6 +122,7 @@ struct UnlockView: View {
             if correct >= needed {
                 manager.unlock()
                 unlocked = true
+                if let target { goToTarget(target) }
             } else {
                 question = makeQuestion()
                 picked = nil

@@ -28,6 +28,12 @@ targets:
     platform: iOS
     sources:
       - path: Flashcards
+    info:
+      path: Flashcards/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: com.advaymonga.Flashcards.gate
+            CFBundleURLSchemes: [flashcards]
     dependencies:
       - target: ShieldConfig
       - target: DeviceActivityMonitorExt

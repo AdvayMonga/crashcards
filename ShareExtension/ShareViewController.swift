@@ -13,12 +13,11 @@ class ShareViewController: UIViewController {
     private func handleShare() async {
         let items = (extensionContext?.inputItems as? [NSExtensionItem]) ?? []
         let attachments = items.flatMap { $0.attachments ?? [] }
-        let title = items.compactMap { $0.attributedContentText?.string }.first ?? "Shared"
 
         for provider in attachments {
-            if let text = await load(provider) {
+            if let shared = await load(provider) {
                 do {
-                    try SharedInbox.deposit(text, title: String(title.prefix(40)))
+                    try SharedInbox.deposit(shared.text, title: shared.title)
                     await confirm("Saved to Flashcards", detail: "Open Flashcards to finish importing.")
                 } catch {
                     await confirm("Couldn't save that", detail: error.localizedDescription)
@@ -29,15 +28,19 @@ class ShareViewController: UIViewController {
         await confirm("Nothing to import", detail: "Share text, a link, or a text file.")
     }
 
-    /// Text as-is; a link as its address; a file by reading it.
-    private func load(_ provider: NSItemProvider) async -> String? {
+    /// Text as-is; a link as its address; a file by reading it. A file or link names the
+    /// set; loose text has nothing to name it with, so the app asks.
+    private func load(_ provider: NSItemProvider) async -> (text: String, title: String)? {
         if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
            let text = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) as? String {
-            return text
+            return (text, "")
         }
         if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
            let url = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL {
-            return url.isFileURL ? (try? String(contentsOf: url, encoding: .utf8)) : url.absoluteString
+            let name = url.deletingPathExtension().lastPathComponent
+            guard url.isFileURL else { return (url.absoluteString, url.host ?? "") }
+            guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+            return (contents, name)
         }
         return nil
     }

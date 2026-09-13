@@ -106,9 +106,7 @@ enum MarkdownParser {
     """
 
     static func parse(_ text: String, filename: String) -> ParsedFile {
-        var title = filename.replacingOccurrences(
-            of: #"\.md$"#, with: "", options: [.regularExpression, .caseInsensitive]
-        )
+        var title = SetFile.title(from: filename)
         var titleFromHeading = false
         var contents: [CardContent] = []
         var issues: [ParseIssue] = []

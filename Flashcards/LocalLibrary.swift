@@ -13,8 +13,6 @@ enum LocalLibrary {
         return url
     }
 
-    static var isEmpty: Bool { (try? files().isEmpty) ?? true }
-
     static func files() throws -> [URL] {
         try FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
@@ -29,13 +27,9 @@ enum LocalLibrary {
         return url
     }
 
-    static func delete(_ url: URL) throws {
-        try FileManager.default.removeItem(at: url)
-    }
-
     /// A filename derived from the title, with a numbered suffix if it's taken.
     private static func uniqueURL(for title: String) -> URL {
-        let base = sanitized(title)
+        let base = SetFile.filename(from: title)
         var candidate = directory.appendingPathComponent("\(base).md")
         var n = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
@@ -43,14 +37,6 @@ enum LocalLibrary {
             n += 1
         }
         return candidate
-    }
-
-    private static func sanitized(_ title: String) -> String {
-        let cleaned = title
-            .components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|"))
-            .joined(separator: "-")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty ? "Set" : String(cleaned.prefix(60))
     }
 }
 
@@ -65,6 +51,22 @@ enum SetFile {
 
     static func canRead(_ url: URL) -> Bool {
         allExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    /// A set's name from its filename, without the extension.
+    static func title(from filename: String) -> String {
+        URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+    }
+
+    /// A filename base safe to write: no path separators, and no leading dot — a dotfile
+    /// would save without error and then never appear, since scans skip hidden files.
+    static func filename(from title: String) -> String {
+        let cleaned = title
+            .components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|"))
+            .joined(separator: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let visible = cleaned.drop { $0 == "." }.trimmingCharacters(in: .whitespaces)
+        return visible.isEmpty ? "Set" : String(visible.prefix(60))
     }
 
     /// Parse a file's text according to its extension.

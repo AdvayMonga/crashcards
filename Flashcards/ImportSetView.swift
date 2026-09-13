@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct ImportSetView: View {
     /// Text handed in by the share sheet, when the import didn't start here.
     var initialText: String = ""
+    var initialTitle: String = ""
     let onSaved: () -> Void
 
     @Environment(LibraryStore.self) private var library
@@ -22,9 +23,16 @@ struct ImportSetView: View {
     @State private var error: String?
     @State private var saveToFolder = true
 
-    private var result: ImportParser.Result? {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return ImportParser.parse(text, as: layout, title: effectiveTitle)
+    @State private var result: ImportParser.Result?
+
+    /// Parsing is deliberately not a computed property: detection tries every layout, and
+    /// recomputing that on each `body` pass re-parsed the whole paste on every keystroke.
+    private func reparse() {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            result = nil
+            return
+        }
+        result = ImportParser.parse(text, as: layout, title: effectiveTitle)
     }
     private var effectiveTitle: String {
         let trimmed = title.trimmingCharacters(in: .whitespaces)
@@ -55,10 +63,16 @@ struct ImportSetView: View {
                 }
             }
             .fileImporter(isPresented: $importingFile,
-                          allowedContentTypes: [.plainText, .commaSeparatedText, .text, .data]) { result in
+                          allowedContentTypes: [.plainText, .commaSeparatedText, .text]) { result in
                 load(from: result)
             }
-            .onAppear { if text.isEmpty { text = initialText } }
+            .onAppear {
+                if text.isEmpty { text = initialText }
+                if title.isEmpty { title = initialTitle }
+                reparse()
+            }
+            .onChange(of: text) { _, _ in layout = nil; reparse() }
+            .onChange(of: layout) { _, _ in reparse() }
         }
     }
 
@@ -161,17 +175,25 @@ struct ImportSetView: View {
             layout = nil
             if title.isEmpty { title = url.deletingPathExtension().lastPathComponent }
             error = nil
+            reparse()
         } catch {
             self.error = error.localizedDescription
         }
     }
 
-    /// docs.google.com/document/d/<id>/edit → the same doc exported as plain text.
+    /// A Docs link exports as text, a Sheets link as CSV. Anything else is left alone —
+    /// rewriting a Slides or Drive link would just 404 with a misleading explanation.
     static func googleDocsExport(_ url: URL) -> URL? {
         guard url.host?.contains("docs.google.com") == true,
               let id = url.pathComponents.drop(while: { $0 != "d" }).dropFirst().first
         else { return nil }
-        return URL(string: "https://docs.google.com/document/d/\(id)/export?format=txt")
+        if url.pathComponents.contains("document") {
+            return URL(string: "https://docs.google.com/document/d/\(id)/export?format=txt")
+        }
+        if url.pathComponents.contains("spreadsheets") {
+            return URL(string: "https://docs.google.com/spreadsheets/d/\(id)/export?format=csv")
+        }
+        return nil
     }
 
     private func load(from result: Result<URL, Error>) {
@@ -187,8 +209,9 @@ struct ImportSetView: View {
             }
             text = contents
             layout = nil
-            if title.isEmpty { title = url.deletingPathExtension().lastPathComponent }
+            if title.isEmpty { title = SetFile.title(from: url.lastPathComponent) }
             error = nil
+            reparse()
         }
     }
 

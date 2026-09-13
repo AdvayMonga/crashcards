@@ -24,6 +24,7 @@ struct RootView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     reload()
+                    collectShare()
                     offerUnlock()
                 }
             }
@@ -46,7 +47,7 @@ struct RootView: View {
         }
         .sheet(isPresented: .init(get: { shared != nil }, set: { if !$0 { finishShare() } })) {
             if let shared {
-                ImportSetView(initialText: shared.text) {
+                ImportSetView(initialText: shared.text, initialTitle: shared.title) {
                     library.reload()
                 }
                 .environment(library)
@@ -57,14 +58,17 @@ struct RootView: View {
     /// A share waiting from the extension becomes an import, preview and all.
     private func collectShare() {
         guard shared == nil, let waiting = SharedInbox.next() else { return }
+        unlocking = false   // one sheet at a time; the questions can wait
         shared = waiting
         tab = .study
     }
 
-    /// Whether it was imported or abandoned, the share is consumed once it's been shown.
+    /// Whether it was imported or abandoned, the share is consumed once it's been shown —
+    /// then the next one queued behind it comes up.
     private func finishShare() {
         if let shared { SharedInbox.clear(shared.url) }
         shared = nil
+        collectShare()
     }
 
     /// Re-read the folders and Flagged.md, so edits made in Obsidian show up here.
@@ -75,7 +79,8 @@ struct RootView: View {
         blocking.refresh()
     }
 
-    /// Arriving while blocked usually means you just tried to open a blocked app.
+    /// Arriving while blocked usually means you just tried to open a blocked app. Skipped
+    /// while a share is up: two sheets on the same view can't both present.
     private func offerUnlock() {
         guard shared == nil, blocking.isShieldActive, !library.quizCards.isEmpty else { return }
         tab = .focus

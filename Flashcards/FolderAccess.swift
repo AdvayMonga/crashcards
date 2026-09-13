@@ -281,12 +281,7 @@ enum FolderAccess {
         let scoped = folder.startAccessingSecurityScopedResource()
         defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
 
-        let base = title
-            .components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|"))
-            .joined(separator: "-")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = base.isEmpty ? "Set" : String(base.prefix(60))
-
+        let name = SetFile.filename(from: title)
         var url = folder.appendingPathComponent("\(name).md")
         var n = 2
         while FileManager.default.fileExists(atPath: url.path) {

@@ -30,8 +30,7 @@ enum SharedInbox {
     /// Called by the share extension. Throws rather than dropping the share on the floor.
     static func deposit(_ text: String, title: String) throws {
         guard let directory else { throw InboxError.noContainer }
-        let name = title.isEmpty ? "Shared" : title
-        let safe = name.components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|")).joined()
+        let safe = title.components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|-")).joined()
         let url = directory.appendingPathComponent("\(Date().timeIntervalSince1970)-\(safe.prefix(40)).txt")
         try text.write(to: url, atomically: true, encoding: .utf8)
     }
@@ -46,9 +45,9 @@ enum SharedInbox {
               let text = try? String(contentsOf: first, encoding: .utf8)
         else { return nil }
 
-        // "1757・title.txt" → "title"
+        // "1757.42-title.txt" → "title", or "" when the share had no name to give.
         let name = first.deletingPathExtension().lastPathComponent
-        let title = name.split(separator: "-", maxSplits: 1).last.map(String.init) ?? "Shared"
+        let title = name.split(separator: "-", maxSplits: 1).dropFirst().first.map(String.init) ?? ""
         return (text, title, first)
     }
 

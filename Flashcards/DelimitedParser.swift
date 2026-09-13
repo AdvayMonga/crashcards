@@ -20,28 +20,35 @@ enum DelimitedParser {
     ]
 
     static func parse(_ text: String, filename: String) -> ParsedFile {
-        let title = filename.replacingOccurrences(
-            of: #"\.(csv|tsv)$"#, with: "", options: [.regularExpression, .caseInsensitive]
-        )
+        let title = SetFile.title(from: filename)
         let separator: Character = filename.lowercased().hasSuffix(".tsv") ? "\t" : ","
         var contents: [CardContent] = []
         var issues: [ParseIssue] = []
 
-        let rows = rows(in: text, separator: separator)
-        for (index, row) in rows.enumerated() {
-            let cells = row.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        var headerChecked = false
+        for (index, row) in rows(in: text, separator: separator).enumerated() {
+            // Trailing empties are dropped, inner ones kept: a blank cell must hold its
+            // place, or a leading index column would silently shift every card along.
+            var cells = row.map { $0.trimmingCharacters(in: .whitespaces) }
+            while let last = cells.last, last.isEmpty { cells.removeLast() }
             if cells.isEmpty { continue }
-            if index == 0, isHeader(cells) { continue }
 
-            guard cells.count >= 2 else {
+            // The header is the first row with content, which isn't always row one.
+            if !headerChecked {
+                headerChecked = true
+                if isHeader(cells) { continue }
+            }
+
+            guard cells.count >= 2, !cells[0].isEmpty, !cells[1].isEmpty else {
                 issues.append(ParseIssue(line: index + 1, kind: .shortRow, excerpt: cells[0]))
                 continue
             }
-            if cells.count == 2 {
+            let distractors = cells.dropFirst(2).filter { !$0.isEmpty }
+            if distractors.isEmpty {
                 contents.append(.flip(front: cells[0], back: cells[1]))
             } else {
                 let choices = [Choice(text: cells[1], isCorrect: true)]
-                    + cells[2...].map { Choice(text: $0, isCorrect: false) }
+                    + distractors.map { Choice(text: $0, isCorrect: false) }
                 contents.append(.multipleChoice(question: cells[0], choices: choices.shuffled()))
             }
         }
@@ -83,7 +90,7 @@ enum DelimitedParser {
                 continue
             }
             switch character {
-            case "\"" where field.isEmpty: inQuotes = true
+            case "\"" where field.allSatisfy(\.isWhitespace): field = ""; inQuotes = true
             case separator: row.append(field); field = ""
             case "\n": row.append(field); rows.append(row); row = []; field = ""
             default: field.append(character)

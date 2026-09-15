@@ -18,8 +18,14 @@ final class StudySession {
     var total: Int { order.count }
     var isEmpty: Bool { order.isEmpty }
     var isFinished: Bool { position >= order.count }
-    var current: Card? { isFinished ? nil : cards[order[position]] }
+    var current: Card? { card(at: position) }
     var progressText: String { "\(min(position + 1, total)) / \(total)" }
+
+    /// The card on a given page. The pager renders neighbours, not just the current one.
+    func card(at index: Int) -> Card? {
+        guard order.indices.contains(index) else { return nil }
+        return cards[order[index]]
+    }
 
     var correctCount: Int { results.values.filter { $0 }.count }
     /// Cards not answered correctly this session (wrong or skipped), in study order.
@@ -39,9 +45,10 @@ final class StudySession {
         isFlipped = false
     }
 
-    func prev() {
-        guard position > 0 else { return }
-        position -= 1
+    /// Scroll to a page. The last page, one past the cards, is the summary.
+    func go(to index: Int) {
+        guard index >= 0, index <= order.count, index != position else { return }
+        position = index
         isFlipped = false
     }
 

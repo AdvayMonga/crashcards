@@ -2,7 +2,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// Accepts text, a link, or a text file from any app's share sheet and parks it for
-/// Flashcards to import. Deliberately dumb: no parsing here, so the app can show you the
+/// Crash Cards to import. Deliberately dumb: no parsing here, so the app can show you the
 /// preview before anything becomes a set.
 class ShareViewController: UIViewController {
     override func viewDidLoad() {
@@ -18,7 +18,7 @@ class ShareViewController: UIViewController {
             if let shared = await load(provider) {
                 do {
                     try SharedInbox.deposit(shared.text, title: shared.title)
-                    await confirm("Saved to Flashcards", detail: "Open Flashcards to finish importing.")
+                    await confirm("Saved to Crash Cards", detail: "Open Crash Cards to finish importing.")
                 } catch {
                     await confirm("Couldn't save that", detail: error.localizedDescription)
                 }

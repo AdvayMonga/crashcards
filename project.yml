@@ -38,7 +38,8 @@ targets:
       properties:
         CFBundleURLTypes:
           - CFBundleURLName: com.advaymonga.Flashcards.gate
-            CFBundleURLSchemes: [flashcards]
+            # flashcards:// stays accepted so a Shortcut set up before the rename keeps working.
+            CFBundleURLSchemes: [crashcards, flashcards]
     dependencies:
       - target: ShieldConfig
       - target: DeviceActivityMonitorExt
@@ -53,6 +54,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Crash Cards
         TARGETED_DEVICE_FAMILY: "1"                 # iPhone only
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -119,7 +121,7 @@ targets:
     info:
       path: ShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: Flashcards
+        CFBundleDisplayName: Crash Cards
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController

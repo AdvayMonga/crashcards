@@ -46,7 +46,7 @@ struct SettingsView: View {
                         }
                     }
                 } footer: {
-                    Text("Flashcards never edits your .md files. The only file it writes is \(FlagStore.filename), in your first folder.")
+                    Text("Crash Cards never edits your .md files. The only file it writes is \(FlagStore.filename), in your first folder.")
                 }
             }
             .navigationTitle("Settings")

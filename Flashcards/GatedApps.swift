@@ -5,12 +5,12 @@ import Foundation
 /// Screen Time tokens are opaque, so the app can't learn which app you picked in the
 /// blocking picker — you name the app here so we know where to send you afterwards.
 struct GatedApp: Identifiable, Codable, Hashable {
-    var id: String        // slug used in flashcards://gate?app=<id>
+    var id: String        // slug used in crashcards://gate?app=<id>
     var name: String
     var scheme: String    // e.g. "linkedin://"
 
-    /// The link a Shortcuts automation opens to hand control to Flashcards.
-    var triggerURL: String { "flashcards://gate?app=\(id)" }
+    /// The link a Shortcuts automation opens to hand control to Crash Cards.
+    var triggerURL: String { "crashcards://gate?app=\(id)" }
     var returnURL: URL? { URL(string: scheme) }
 }
 
@@ -57,11 +57,13 @@ enum GatedApps {
         all = all.filter { $0.id != app.id }
     }
 
+    /// `flashcards://` is still honoured: it was the scheme before the rename, and a
+    /// Shortcut already set up shouldn't quietly stop working.
     static func isGate(_ url: URL) -> Bool {
-        url.scheme == "flashcards" && url.host == "gate"
+        (url.scheme == "crashcards" || url.scheme == "flashcards") && url.host == "gate"
     }
 
-    /// The app `flashcards://gate?app=linkedin` names, or nil if we don't know it — the
+    /// The app `crashcards://gate?app=linkedin` names, or nil if we don't know it — the
     /// gate still opens in that case, it just has nowhere to send you afterwards.
     static func target(of url: URL) -> GatedApp? {
         guard isGate(url),

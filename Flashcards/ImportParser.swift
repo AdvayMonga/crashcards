@@ -21,7 +21,7 @@ enum ImportParser {
 
         var title: String {
             switch self {
-            case .markdown:       return "Flashcards format"
+            case .markdown:       return "Crash Cards format"
             case .tab:            return "Tab"
             case .comma:          return "Comma"
             case .semicolon:      return "Semicolon"

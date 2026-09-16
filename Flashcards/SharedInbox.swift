@@ -9,7 +9,7 @@ enum InboxError: LocalizedError {
     case noContainer
 
     var errorDescription: String? {
-        "Flashcards can't reach its shared storage, so the share wasn't saved. The app's App Group entitlement is missing or misconfigured."
+        "Crash Cards can't reach its shared storage, so the share wasn't saved. The app's App Group entitlement is missing or misconfigured."
     }
 }
 

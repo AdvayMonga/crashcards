@@ -27,7 +27,13 @@ struct SetListView: View {
                 .toolbar { toolbarContent }
                 .safeAreaInset(edge: .bottom) { studyBar }
                 .navigationDestination(item: $studyMode) { mode in
-                    destination(for: mode) { StudyView(session: StudySession(cards: $0), mode: mode) }
+                    destination(for: mode) { cards in
+                        switch mode {
+                        case .flashcards: CardDeckView(cards: cards)
+                        case .quiz: QuizView(session: StudySession(cards: cards))
+                        case .voice: VoiceStudyView(session: StudySession(cards: cards))
+                        }
+                    }
                 }
                 .navigationDestination(isPresented: $studyingVoice) {
                     destination(for: .voice) { VoiceStudyView(session: StudySession(cards: $0)) }

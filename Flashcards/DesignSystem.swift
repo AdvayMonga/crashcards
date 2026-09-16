@@ -111,6 +111,31 @@ extension ButtonStyle where Self == CrashButton {
     static func solid(_ tint: Color) -> CrashButton { CrashButton(kind: .solid, tint: tint) }
 }
 
+/// The screen title, drawn by us rather than the navigation bar — iOS 26 draws its own
+/// title in the system face, which would leave two typefaces in one app.
+struct ScreenHeader<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).font(.brandDisplay)
+            Spacer()
+            trailing
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
+        .background(Brand.canvas)
+    }
+}
+
+extension ScreenHeader where Trailing == EmptyView {
+    init(_ title: String) {
+        self.init(title: title) { EmptyView() }
+    }
+}
+
 /// A slim progress bar. Replaces "3 / 12" as the primary signal — you read a bar faster.
 struct ProgressTrack: View {
     let value: Int

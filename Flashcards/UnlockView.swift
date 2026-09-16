@@ -23,11 +23,10 @@ struct UnlockView: View {
             if unlocked {
                 success
             } else if let question {
-                Text("\(correct) of \(needed) correct")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+                ProgressTrack(value: correct, total: needed)
+                    .padding(.horizontal, 4)
                 Text(question.prompt)
-                    .font(.title3.weight(.semibold))
+                    .font(.brandCard)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -40,7 +39,8 @@ struct UnlockView: View {
                                        description: Text("Add cards to your flashcards folder first."))
             }
         }
-        .padding()
+        .padding(20)
+        .background(Brand.canvas)
         .navigationTitle("Unlock")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -59,7 +59,7 @@ struct UnlockView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.green)
             Text("Unlocked for \(ScreenTimeManager.unlockMinutes) minutes")
-                .font(.title2.weight(.semibold))
+                .font(.brandTitle)
                 .multilineTextAlignment(.center)
             Text(returnFailed
                  ? "\(target?.name ?? "That app") didn't open. Check its link in Focus, or switch to it yourself."
@@ -69,17 +69,14 @@ struct UnlockView: View {
                 .multilineTextAlignment(.center)
             if let target {
                 Button("Open \(target.name)") { goToTarget(target) }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .buttonStyle(.solid)
             }
             if target == nil {
                 Button("Done") { dismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .buttonStyle(.solid)
             } else {
                 Button("Stay here") { dismiss() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+                    .buttonStyle(.soft)
             }
         }
     }
@@ -94,29 +91,50 @@ struct UnlockView: View {
     private func choiceRow(_ choice: Choice) -> some View {
         Button { answer(choice) } label: {
             Text(choice.text)
+                .font(.brandBody)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(background(for: choice))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator)))
+                .padding(.vertical, 17)
+                .padding(.horizontal, 18)
+                .background(
+                    RoundedRectangle(cornerRadius: Brand.controlRadius, style: .continuous)
+                        .fill(background(for: choice))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Brand.controlRadius, style: .continuous)
+                        .strokeBorder(border(for: choice), lineWidth: picked == nil ? 1 : 2)
+                )
         }
         .buttonStyle(.plain)
         .disabled(picked != nil)
     }
 
     private func background(for choice: Choice) -> Color {
-        guard let picked else { return Color(.secondarySystemBackground) }
-        if choice.isCorrect { return .green.opacity(0.18) }
-        if choice == picked { return .red.opacity(0.18) }
-        return Color(.secondarySystemBackground)
+        guard picked != nil else { return Brand.surface }
+        return (tint(for: choice) ?? .clear).opacity(0.13)
+    }
+
+    private func border(for choice: Choice) -> Color {
+        guard picked != nil else { return Brand.hairline }
+        return tint(for: choice) ?? Brand.hairline
+    }
+
+    private func tint(for choice: Choice) -> Color? {
+        guard let picked else { return nil }
+        if choice.isCorrect { return Brand.correct }
+        return choice == picked ? Brand.wrong : nil
     }
 
     /// Score the tap, show the result briefly, then advance — or unlock once we hit the target.
     private func answer(_ choice: Choice) {
         guard picked == nil else { return }
         picked = choice
-        if choice.isCorrect { correct += 1 }
+        if choice.isCorrect {
+            correct += 1
+            Haptics.correct()
+        } else {
+            Haptics.wrong()
+        }
         Task {
             try? await Task.sleep(for: .seconds(0.7))
             if correct >= needed {

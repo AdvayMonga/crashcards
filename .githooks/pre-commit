@@ -1,0 +1,36 @@
+#!/bin/sh
+# Runs the unit tests before a commit that touches Swift or the project spec.
+# Install once with:  git config core.hooksPath .githooks
+# Skip a single commit with:  SKIP_TESTS=1 git commit ...
+#
+# Note: it tests the working tree, not the staged tree. A partial stage (git add -p) is
+# therefore checked as you see it on disk, not as it will land. CI tests the real commit.
+set -e
+
+[ -n "$SKIP_TESTS" ] && exit 0
+
+changed=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.swift$|project\.yml$' || true)
+[ -z "$changed" ] && exit 0
+
+command -v xcodegen >/dev/null 2>&1 || {
+    echo "pre-commit: xcodegen not installed (brew install xcodegen); skipping tests."
+    exit 0
+}
+
+device=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9][^(]*' | sed 's/ *$//')
+[ -z "$device" ] && {
+    echo "pre-commit: no iPhone simulator available; skipping tests."
+    exit 0
+}
+
+echo "pre-commit: running tests on $device…"
+xcodegen generate >/dev/null
+if ! xcodebuild test -project Flashcards.xcodeproj -scheme Flashcards \
+        -destination "platform=iOS Simulator,name=$device" \
+        CODE_SIGNING_ALLOWED=NO -quiet >/tmp/flashcards-pre-commit.log 2>&1; then
+    grep -E '✘|error:' /tmp/flashcards-pre-commit.log | head -20
+    echo
+    echo "pre-commit: tests failed (full log: /tmp/flashcards-pre-commit.log)"
+    exit 1
+fi
+echo "pre-commit: tests passed."

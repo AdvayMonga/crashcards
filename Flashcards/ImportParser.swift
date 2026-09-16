@@ -75,6 +75,9 @@ enum ImportParser {
     /// The layout that yields the most cards; ties go to the earlier, more explicit one.
     static func detect(_ text: String) -> Layout {
         if text.contains("::") || text.contains("- [x]") || text.contains("- [ ]") { return .markdown }
+        // Explicit labels beat counting: the colon layout reads "Q: What is it?" as a card
+        // of its own — two useless cards per pair, which is more than Q/A's one.
+        if looksLabelled(text) { return .questionAnswer }
 
         var best: Layout = .tab
         var bestCount = 0
@@ -86,6 +89,19 @@ enum ImportParser {
             }
         }
         return best
+    }
+
+    /// Does the text mark its questions and answers by name?
+    private static func looksLabelled(_ text: String) -> Bool {
+        var questions = false
+        var answers = false
+        for line in lines(in: text) {
+            let lowered = line.trimmingCharacters(in: .whitespaces).lowercased()
+            if lowered.hasPrefix("q:") || lowered.hasPrefix("question:") { questions = true }
+            if lowered.hasPrefix("a:") || lowered.hasPrefix("answer:") { answers = true }
+            if questions && answers { return true }
+        }
+        return false
     }
 
     // MARK: - Shapes

@@ -40,7 +40,7 @@ struct ParseIssue: Identifiable, Hashable {
         case .noCorrectOption:
             return "None of these options is marked correct, so the card was skipped."
         case .multipleCorrectOptions:
-            return "More than one option is marked `[x]`; only the first is used as the answer."
+            return "More than one option is marked `[x]`, so any of them counts as correct."
         case .malformedOption:
             return "This looks like an option but isn't written as `- [ ]` or `- [x]`."
         case .orphanOptions:

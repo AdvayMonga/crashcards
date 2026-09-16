@@ -17,8 +17,13 @@ schemes:
     build:
       targets:
         Flashcards: all
+        FlashcardsTests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - FlashcardsTests
     archive:
       config: Release
 
@@ -131,3 +136,16 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.ShareExtension
+
+  # Pure-logic tests: parsers, session state, links. No UI, no device behaviour.
+  FlashcardsTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Flashcards
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.Tests
+        GENERATE_INFOPLIST_FILE: YES

@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Swift Testing needs Xcode 16 or newer; runners carry several.
+      - name: Use the newest installed Xcode
+        run: |
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Selecting $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # The .xcodeproj is generated, not committed — project.yml is the source of truth.
+      - name: Generate the project
+        run: xcodegen generate
+
+      # Runner simulator names change between images, so take whichever iPhone is there.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          device=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9][^(]*' | sed 's/ *$//')
+          echo "Using $device"
+          echo "device=$device" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project Flashcards.xcodeproj \
+            -scheme Flashcards \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
+            CODE_SIGNING_ALLOWED=NO
+
+      # Advisory only: enforcing swift-format would reformat the whole codebase.
+      - name: Formatting (advisory)
+        continue-on-error: true
+        run: |
+          xcrun swift-format lint --configuration .swift-format \
+            $(git ls-files '*.swift') || true

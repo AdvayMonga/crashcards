@@ -58,15 +58,20 @@ import Testing
         #expect(parsed.issues.contains { $0.kind == expected })
     }
 
-    /// Options are shuffled, so "the first correct one" is whichever landed first —
-    /// the card still works, and any marked option counts.
-    @Test func multipleCorrectOptionsStillMakesAUsableCard() {
+    /// The warning promises that any marked option counts, and grading reads `isCorrect`
+    /// on whichever option was tapped — so both must stay flagged. Asserting the revealed
+    /// answer instead would pass even if the parser demoted the second `[x]`.
+    @Test func everyOptionMarkedCorrectStaysCorrect() {
         let parsed = MarkdownParser.parse(
-            "Pick one\n- [x] First\n- [x] Second",
+            "Pick one\n- [x] First\n- [x] Second\n- [ ] Third",
             filename: "x.md"
         )
-        #expect(parsed.set.cards.count == 1)
-        #expect(["First", "Second"].contains(parsed.set.cards.first?.answer ?? ""))
+        guard case .multipleChoice(_, let choices) = parsed.set.cards.first?.content else {
+            Issue.record("expected a multiple-choice card")
+            return
+        }
+        #expect(choices.filter(\.isCorrect).count == 2)
+        #expect(choices.count == 3)
     }
 
     @Test func ignoresFrontmatterAndCodeFences() {

@@ -20,7 +20,7 @@ jobs:
       # Swift Testing needs Xcode 16 or newer; runners carry several.
       - name: Use the newest installed Xcode
         run: |
-          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          latest=$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)
           echo "Selecting $latest"
           sudo xcode-select -s "$latest"
           xcodebuild -version
@@ -52,5 +52,4 @@ jobs:
       - name: Formatting (advisory)
         continue-on-error: true
         run: |
-          xcrun swift-format lint --configuration .swift-format \
-            $(git ls-files '*.swift') || true
+          xcrun swift-format lint --configuration .swift-format $(git ls-files '*.swift')

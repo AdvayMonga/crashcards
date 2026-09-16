@@ -2,6 +2,9 @@
 # Runs the unit tests before a commit that touches Swift or the project spec.
 # Install once with:  git config core.hooksPath .githooks
 # Skip a single commit with:  SKIP_TESTS=1 git commit ...
+#
+# Note: it tests the working tree, not the staged tree. A partial stage (git add -p) is
+# therefore checked as you see it on disk, not as it will land. CI tests the real commit.
 set -e
 
 [ -n "$SKIP_TESTS" ] && exit 0

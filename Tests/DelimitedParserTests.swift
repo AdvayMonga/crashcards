@@ -19,9 +19,11 @@ import Testing
         #expect(parsed.count == 1)
         #expect(parsed.first?.isMultipleChoice == true)
         #expect(parsed.first?.answer == "Paris")
-        if case .multipleChoice(_, let choices) = parsed.first?.content {
-            #expect(choices.count == 3)
+        guard case .multipleChoice(_, let choices) = parsed.first?.content else {
+            Issue.record("expected a multiple-choice card")
+            return
         }
+        #expect(choices.count == 3)
     }
 
     @Test func tabsSplitATSV() {

@@ -9,6 +9,7 @@ import Testing
         ("Mitochondrion;Powerhouse", ImportParser.Layout.semicolon),
         ("Mitochondrion - Powerhouse", ImportParser.Layout.dash),
         ("Q: What is it?\nA: A thing", ImportParser.Layout.questionAnswer),
+        ("Mitochondrion: Powerhouse", ImportParser.Layout.colon),
         ("Mitochondrion :: Powerhouse", ImportParser.Layout.markdown),
     ])
     func detectsTheLayoutItWasGiven(text: String, expected: ImportParser.Layout) {
@@ -19,6 +20,22 @@ import Testing
         let text = "Paris, France :: The capital\nBerlin, Germany :: Also a capital"
         #expect(ImportParser.detect(text) == .markdown)
         #expect(ImportParser.parse(text, title: "t").cards.count == 2)
+    }
+
+    /// Before labels won over counting, the colon layout split each line into its own card
+    /// — "Q :: What is it?" and "A :: A thing" — and two junk cards beat one real one.
+    @Test func labelledPairsBecomeOneCardEach() {
+        let result = ImportParser.parse("Q: What is it?\nA: A thing\nQ: Second?\nA: Yes", title: "t")
+        #expect(result.layout == .questionAnswer)
+        #expect(result.cards.count == 2)
+        #expect(result.cards.first?.prompt == "What is it?")
+        #expect(result.cards.first?.answer == "A thing")
+    }
+
+    @Test func anAnswerWithNoQuestionAboveItIsIgnored() {
+        let result = ImportParser.parse("A: orphan\nQ: Real?\nA: Yes", as: .questionAnswer, title: "t")
+        #expect(result.cards.count == 1)
+        #expect(result.cards.first?.prompt == "Real?")
     }
 
     @Test func aQuizletExportBecomesCards() {

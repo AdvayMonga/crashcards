@@ -56,6 +56,13 @@ struct RootView: View {
                     UnlockView(cards: library.quizCards, manager: blocking, target: request.target)
                 }
             }
+            .alert("Couldn't write \(FlagStore.filename)",
+                   isPresented: .init(get: { flags.writeError != nil },
+                                      set: { if !$0 { flags.writeError = nil } })) {
+                Button("OK") { flags.writeError = nil }
+            } message: {
+                Text(flags.writeError ?? "")
+            }
             .sheet(item: $share, onDismiss: finishShare) { pending in
                 ImportSetView(initialText: pending.text, initialTitle: pending.title) {
                     library.reload()

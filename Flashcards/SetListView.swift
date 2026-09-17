@@ -167,6 +167,9 @@ struct SetListView: View {
         )
         .contentShape(Rectangle())
         .animation(.spring(response: 0.3, dampingFraction: 0.72), value: isOn)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint(isOn ? "Tap to deselect" : "Tap to select")
     }
 
     /// Card count, split by kind so it's obvious which sets a quiz can use.
@@ -212,30 +215,20 @@ struct SetListView: View {
             if !library.sets.isEmpty {
                 Button(allSelected ? "Clear" : "All") { toggleAll() }
                     .buttonStyle(CrashButton(kind: .ghost, fullWidth: false))
-                chip("mic.fill") { studyingVoice = true }
-                    .disabled(selectedSets.isEmpty)
-                    .opacity(selectedSets.isEmpty ? 0.4 : 1)
+                HeaderChip(symbol: "mic.fill", name: "Voice study", tint: Brand.accent) {
+                    studyingVoice = true
+                }
+                .disabled(selectedSets.isEmpty)
+                .opacity(selectedSets.isEmpty ? 0.4 : 1)
             }
-            chip("plus") { importingSet = true }
+            HeaderChip(symbol: "plus", name: "New set", tint: Brand.accent) {
+                importingSet = true
+            }
         }
         .padding(.horizontal, 18)
         .padding(.top, 4)
         .padding(.bottom, 12)
         .background(Brand.canvas)
-    }
-
-    private func chip(_ symbol: String, action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            Image(systemName: symbol)
-                .font(.brand(15, .bold))
-                .foregroundStyle(Brand.accent)
-                .frame(width: 38, height: 38)
-                .background(Circle().fill(Brand.accent.opacity(0.12)))
-        }
-        .buttonStyle(.plain)
     }
 
     private func start(_ mode: StudyMode) {

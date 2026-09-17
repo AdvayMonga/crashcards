@@ -9,6 +9,8 @@ struct QuizView: View {
 
     @State private var picked: Choice?
     @State private var flagging = false
+    /// Held so a dismissed or restarted session can't be advanced by the previous one's timer.
+    @State private var advance: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -32,6 +34,7 @@ struct QuizView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)   // studying is full-screen
+        .onDisappear { advance?.cancel() }
         .confirmationDialog("Flag this card", isPresented: $flagging, titleVisibility: .visible) {
             FlagOptions(card: session.current)
         } message: {
@@ -67,39 +70,33 @@ struct QuizView: View {
         .padding(.bottom, 28)
     }
 
-    /// A flip card in a quiz has no options of its own, so its answer is shown to grade by eye.
+    /// Quiz mode is only ever handed multiple-choice cards (`StudyMode.usableCards` filters
+    /// to them), so the fallback is a formality rather than a way to self-grade a flip card.
     private func choices(for card: Card) -> [Choice] {
-        if case .multipleChoice(_, let choices) = card.content { return choices }
-        return [Choice(text: card.answer, isCorrect: true)]
+        guard case .multipleChoice(_, let choices) = card.content else {
+            return [Choice(text: card.answer, isCorrect: true)]
+        }
+        return choices
     }
 
     private var header: some View {
         HStack(spacing: 14) {
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.brand(15, .bold))
-                    .foregroundStyle(.secondary)
-                    .padding(10)
-                    .background(Circle().fill(Brand.surface))
-            }
-            .buttonStyle(.plain)
+            HeaderChip(symbol: "xmark", name: "Close", tint: .secondary) { dismiss() }
 
-            ProgressTrack(value: session.position, total: session.total)
+            ProgressTrack(value: session.position, total: session.total,
+                          label: "Question \(min(session.position + 1, session.total)) of \(session.total)")
 
             Text("\(session.correctCount)")
                 .font(.brandLabel)
                 .foregroundStyle(Brand.correct)
                 .frame(minWidth: 28)
+                .accessibilityLabel("\(session.correctCount) correct so far")
 
-            Button { flagging = true } label: {
-                Image(systemName: flags.reason(for: session.current) == nil ? "flag" : "flag.fill")
-                    .font(.brand(15, .bold))
-                    .foregroundStyle(flags.reason(for: session.current) == nil ? .secondary : Brand.accent)
-                    .padding(10)
-                    .background(Circle().fill(Brand.surface))
-            }
-            .buttonStyle(.plain)
-            .disabled(session.current == nil || flags.isLocked)
+            let flagged = flags.reason(for: session.current) != nil
+            HeaderChip(symbol: flagged ? "flag.fill" : "flag",
+                       name: flagged ? "Flagged" : "Flag this card",
+                       tint: flagged ? Brand.accent : .secondary) { flagging = true }
+                .disabled(session.current == nil || flags.isLocked)
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 10)
@@ -109,25 +106,32 @@ struct QuizView: View {
     // MARK: - Answering
 
     /// Score it, let the colour land, then move on by itself.
+    ///
+    /// `@MainActor` on the task matters: this method is nonisolated, so a plain `Task`
+    /// would write `@State` and mutate the session off the main thread.
     private func answer(_ choice: Choice) {
         guard picked == nil else { return }
         picked = choice
         session.record(choice.isCorrect)
         choice.isCorrect ? Haptics.correct() : Haptics.wrong()
 
-        Task {
+        advance?.cancel()
+        advance = Task { @MainActor in
             try? await Task.sleep(for: .seconds(choice.isCorrect ? 0.55 : 0.95))
+            guard !Task.isCancelled else { return }
             picked = nil
             session.next()
         }
     }
 
     private func review() {
+        advance?.cancel()
         session = StudySession(cards: session.missedCards)
         picked = nil
     }
 
     private func restart() {
+        advance?.cancel()
         session.restart()
         picked = nil
     }
@@ -227,6 +231,6 @@ private struct ScoreCard: View {
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
-        .onAppear { Haptics.correct() }
+        .onAppear { score >= 50 ? Haptics.correct() : Haptics.knock() }
     }
 }

@@ -140,6 +140,9 @@ extension ScreenHeader where Trailing == EmptyView {
 struct ProgressTrack: View {
     let value: Int
     let total: Int
+    /// What the bar is counting. Callers count different things, so none of them can share
+    /// a baked-in "Card N of M".
+    let label: String
 
     private var fraction: CGFloat {
         guard total > 0 else { return 0 }
@@ -157,6 +160,6 @@ struct ProgressTrack: View {
         }
         .frame(height: 8)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: fraction)
-        .accessibilityLabel("Card \(value) of \(total)")
+        .accessibilityLabel(label)
     }
 }

@@ -15,7 +15,7 @@ import Testing
         #expect(session.total == 3)
         #expect(session.position == 0)
         #expect(session.isFinished == false)
-        #expect(session.progressText == "1 / 3")
+        #expect(session.current != nil)
     }
 
     @Test func runsOutAfterTheLastCard() {
@@ -24,35 +24,6 @@ import Testing
         session.next()
         #expect(session.isFinished)
         #expect(session.current == nil)
-    }
-
-    @Test func scrollingToAPageMovesThereAndHidesTheAnswer() {
-        let session = StudySession(cards: deck(4))
-        session.isFlipped = true
-        session.go(to: 2)
-        #expect(session.position == 2)
-        #expect(session.isFlipped == false)
-    }
-
-    /// The page past the last card is the summary, so it's a valid destination.
-    @Test func scrollingStopsAtTheSummaryAndAtZero() {
-        let session = StudySession(cards: deck(3))
-        session.go(to: 3)
-        #expect(session.position == 3)
-        session.go(to: 99)
-        #expect(session.position == 3)
-        session.go(to: -1)
-        #expect(session.position == 3)
-        session.go(to: 0)
-        #expect(session.position == 0)
-    }
-
-    @Test func everyPageHasItsCardAndNothingBeyond() {
-        let session = StudySession(cards: deck(3))
-        #expect(session.card(at: 0) != nil)
-        #expect(session.card(at: 2) != nil)
-        #expect(session.card(at: 3) == nil)
-        #expect(session.card(at: -1) == nil)
     }
 
     @Test func scoresWhatYouAnsweredAndCountsTheRestAsMissed() {

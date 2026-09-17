@@ -23,8 +23,14 @@ struct UnlockView: View {
             if unlocked {
                 success
             } else if let question {
-                ProgressTrack(value: correct, total: needed)
-                    .padding(.horizontal, 4)
+                VStack(spacing: 8) {
+                    ProgressTrack(value: correct, total: needed,
+                                  label: "\(correct) of \(needed) correct")
+                    Text("\(correct) of \(needed) correct")
+                        .font(.brandCaption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 4)
                 Text(question.prompt)
                     .font(.brandCard)
                     .multilineTextAlignment(.center)

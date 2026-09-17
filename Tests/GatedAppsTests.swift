@@ -14,6 +14,16 @@ import Foundation
     /// `find` falls back to the catalogue, but reads your saved list first — and the test
     /// bundle is hosted by the app, so it would otherwise see whatever you added on this
     /// simulator. A hand-added "Linked In" stores the slug "linkedin" and shadows it.
+    /// The rename kept the old scheme working; this is the only thing protecting that.
+    @Test func theSchemeFromBeforeTheRenameStillOpensTheGate() {
+        #expect(GatedApps.isGate(URL(string: "flashcards://gate?app=linkedin")!))
+
+        let saved = GatedApps.all
+        GatedApps.all = []
+        defer { GatedApps.all = saved }
+        #expect(GatedApps.target(of: URL(string: "flashcards://gate?app=linkedin")!)?.id == "linkedin")
+    }
+
     @Test func findsAKnownAppEvenBeforeItIsAdded() {
         let saved = GatedApps.all
         GatedApps.all = []

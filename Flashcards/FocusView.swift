@@ -22,6 +22,8 @@ struct FocusView: View {
 
                 Section {
                     Toggle("Block apps", isOn: blockingBinding)
+                .font(.brandBody)
+                .tint(Brand.accent)
                 } footer: {
                     Text("Opening a blocked app shows a block screen. Answer \(ScreenTimeManager.questionsToUnlock) questions here to unlock everything for \(ScreenTimeManager.unlockMinutes) minutes.")
                 }
@@ -35,14 +37,21 @@ struct FocusView: View {
                     ForEach(Array(manager.selection.categoryTokens), id: \.self) { token in
                         Label(token)
                     }
-                    Button(manager.hasSelection ? "Change apps" : "Choose apps") { pickerShown = true }
+                    Button(manager.hasSelection ? "Change apps" : "Choose apps") {
+                        Haptics.tap()
+                        pickerShown = true
+                    }
+                    .font(.brandBody)
                 }
 
                 if let error = manager.errorText {
                     Section { Text(error).foregroundStyle(.red) }
                 }
             }
-            .navigationTitle("Focus")
+            .scrollContentBackground(.hidden)
+            .background(Brand.canvas)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top) { ScreenHeader("Focus") }
             .familyActivityPicker(isPresented: $pickerShown, selection: pickerBinding)
             .sheet(isPresented: $addingApp) {
                 AddGatedAppView { app in
@@ -71,7 +80,7 @@ struct FocusView: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(app.name).foregroundStyle(.primary)
+                            Text(app.name).font(.brandBody).foregroundStyle(.primary)
                             Text(copied == app.id ? "Link copied" : app.triggerURL)
                                 .font(.caption)
                                 .foregroundStyle(copied == app.id ? .green : .secondary)
@@ -85,7 +94,11 @@ struct FocusView: View {
                 offsets.map { gatedApps[$0] }.forEach(GatedApps.remove)
                 gatedApps = GatedApps.all
             }
-            Button("Add an app") { addingApp = true }
+            Button("Add an app") {
+                Haptics.tap()
+                addingApp = true
+            }
+            .font(.brandBody)
         } header: {
             Text("Straight to the questions")
         } footer: {
@@ -97,26 +110,31 @@ struct FocusView: View {
     @ViewBuilder private var status: some View {
         VStack(spacing: 12) {
             Image(systemName: statusIcon)
-                .font(.system(size: 52))
+                .font(.system(size: 46))
                 .foregroundStyle(statusColor)
+                .padding(26)
+                .background(Circle().fill(statusColor.opacity(0.12)))
+                .contentTransition(.symbolEffect(.replace))
             Text(statusTitle)
-                .font(.title2.weight(.semibold))
+                .font(.brandTitle)
             if let until = manager.unlockedUntil {
                 Text(until, style: .timer)
-                    .font(.system(.title3, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(.brand(22, .bold).monospacedDigit())
+                    .foregroundStyle(Brand.correct)
             } else {
                 Text(statusDetail)
-                    .font(.subheadline)
+                    .font(.brandBody)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
             if manager.isShieldActive {
                 Button("Answer \(ScreenTimeManager.questionsToUnlock) questions to unlock") {
+                    Haptics.knock()
                     unlocking = true
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(.solid)
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
                 .disabled(library.quizCards.isEmpty)
             }
         }

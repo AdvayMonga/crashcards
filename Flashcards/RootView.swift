@@ -4,7 +4,7 @@ import SwiftUI
 /// setup is offered from the Study tab's empty state, not demanded up front.
 ///
 /// Re-scans on first appearance and whenever the app returns to the foreground. Two things
-/// can interrupt that arrival: a `flashcards://gate?app=…` link (a Shortcuts automation
+/// can interrupt that arrival: a `crashcards://gate?app=…` link (a Shortcuts automation
 /// reacting to you opening a blocked app), which shows the questions and hands you back to
 /// that app; and text waiting from the share extension, which opens the importer.
 struct RootView: View {
@@ -55,6 +55,13 @@ struct RootView: View {
                 NavigationStack {
                     UnlockView(cards: library.quizCards, manager: blocking, target: request.target)
                 }
+            }
+            .alert("Couldn't write \(FlagStore.filename)",
+                   isPresented: .init(get: { flags.writeError != nil },
+                                      set: { if !$0 { flags.writeError = nil } })) {
+                Button("OK") { flags.writeError = nil }
+            } message: {
+                Text(flags.writeError ?? "")
             }
             .sheet(item: $share, onDismiss: finishShare) { pending in
                 ImportSetView(initialText: pending.text, initialTitle: pending.title) {

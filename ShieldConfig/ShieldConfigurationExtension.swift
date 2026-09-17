@@ -11,7 +11,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             backgroundColor: UIColor.black.withAlphaComponent(0.5),
             icon: UIImage(systemName: "rectangle.on.rectangle.angled"),
             title: .init(text: "Blocked", color: .white),
-            subtitle: .init(text: "Open Flashcards and answer \(questionCount) questions to unlock this app for \(unlockMinutes) minutes.",
+            subtitle: .init(text: "Open Crash Cards and answer \(questionCount) questions to unlock this app for \(unlockMinutes) minutes.",
                             color: .white.withAlphaComponent(0.8)),
             primaryButtonLabel: .init(text: "OK", color: .black),
             primaryButtonBackgroundColor: .white

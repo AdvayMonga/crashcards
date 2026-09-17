@@ -18,7 +18,7 @@ enum FolderError: LocalizedError {
         case .nestedFolder:
             return "That folder overlaps one you've already added, so every set inside it would load twice."
         case .notAppFile(let name):
-            return "Flashcards only ever writes \(FlagStore.filename); it refused to write “\(name)”."
+            return "Crash Cards only ever writes \(FlagStore.filename); it refused to write “\(name)”."
         }
     }
 }

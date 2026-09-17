@@ -23,11 +23,17 @@ struct SetListView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Sets")
-                .toolbar { toolbarContent }
+                .toolbar(.hidden, for: .navigationBar)
+                .safeAreaInset(edge: .top) { header }
                 .safeAreaInset(edge: .bottom) { studyBar }
                 .navigationDestination(item: $studyMode) { mode in
-                    destination(for: mode) { StudyView(session: StudySession(cards: $0), mode: mode) }
+                    destination(for: mode) { cards in
+                        switch mode {
+                        case .flashcards: CardDeckView(cards: cards)
+                        case .quiz: QuizView(session: StudySession(cards: cards))
+                        case .voice: VoiceStudyView(session: StudySession(cards: cards))
+                        }
+                    }
                 }
                 .navigationDestination(isPresented: $studyingVoice) {
                     destination(for: .voice) { VoiceStudyView(session: StudySession(cards: $0)) }
@@ -87,24 +93,35 @@ struct SetListView: View {
                 }
             }
         } else {
-            List {
-                if hasProblems {
-                    Section {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if hasProblems {
                         NavigationLink {
                             FileProblemsView().environment(library).environment(flags)
                         } label: {
-                            Label(problemSummary, systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
+                            HStack(spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                Text(problemSummary).font(.brandLabel)
+                                Spacer()
+                            }
+                            .foregroundStyle(.orange)
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color.orange.opacity(0.12))
+                            )
                         }
                     }
-                }
-                Section {
                     ForEach(library.sets) { set in
                         Button { toggle(set.id) } label: { row(for: set) }
-                            .tint(.primary)
+                            .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
             }
+            .background(Brand.canvas)
         }
     }
 
@@ -115,19 +132,44 @@ struct SetListView: View {
     }
 
     private func row(for set: FlashcardSet) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: selected.contains(set.id) ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(selected.contains(set.id) ? Color.accentColor : Color.secondary)
-                .font(.title3)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(set.title).font(.headline)
+        let isOn = selected.contains(set.id)
+        return HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .strokeBorder(isOn ? Color.clear : Brand.hairline, lineWidth: 2)
+                    .background(Circle().fill(isOn ? Brand.accent : Color.clear))
+                if isOn {
+                    Image(systemName: "checkmark")
+                        .font(.brand(13, .bold))
+                        .foregroundStyle(.white)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: 26, height: 26)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(set.title).font(.brandBody).foregroundStyle(.primary)
                 Text(cardSummary(for: set))
-                    .font(.caption)
+                    .font(.brandCaption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Brand.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(isOn ? Brand.accent : .clear, lineWidth: 2)
+        )
         .contentShape(Rectangle())
+        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: isOn)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+        .accessibilityHint(isOn ? "Tap to deselect" : "Tap to select")
     }
 
     /// Card count, split by kind so it's obvious which sets a quiz can use.
@@ -140,55 +182,62 @@ struct SetListView: View {
 
     @ViewBuilder private var studyBar: some View {
         if !library.sets.isEmpty {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 if selectedSets.isEmpty {
-                    Text("Pick a set to start.")
-                        .font(.caption)
+                    Text("Pick a set to start")
+                        .font(.brandCaption)
                         .foregroundStyle(.secondary)
+                        .transition(.opacity)
                 }
 
                 HStack(spacing: 12) {
-                    Button { studyMode = .flashcards } label: {
-                        Text("Flashcards").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Button { studyMode = .quiz } label: {
-                        Text("Quiz").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-
+                    Button("Flashcards") { start(.flashcards) }
+                        .buttonStyle(.solid)
+                    Button("Quiz") { start(.quiz) }
+                        .buttonStyle(.soft)
                 }
-                .controlSize(.large)
                 .disabled(selectedSets.isEmpty)
+                .opacity(selectedSets.isEmpty ? 0.5 : 1)
             }
-            .padding(.horizontal)
-            .padding(.top, 12)
-            .padding(.bottom, 20)
-            .background(.bar)
+            .animation(.easeInOut(duration: 0.2), value: selectedSets.isEmpty)
+            .padding(.horizontal, 18)
+            .padding(.top, 10)
+            .padding(.bottom, 18)   // clears the ledge under each button
+            .background(Brand.canvas.opacity(0.94))
         }
     }
 
-    @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Sets")
+                .font(.brandDisplay)
+            Spacer()
             if !library.sets.isEmpty {
-                Button(allSelected ? "Deselect All" : "Select All") { toggleAll() }
+                Button(allSelected ? "Clear" : "All") { toggleAll() }
+                    .buttonStyle(CrashButton(kind: .ghost, fullWidth: false))
+                HeaderChip(symbol: "mic.fill", name: "Voice study", tint: Brand.accent) {
+                    studyingVoice = true
+                }
+                .disabled(selectedSets.isEmpty)
+                .opacity(selectedSets.isEmpty ? 0.4 : 1)
+            }
+            HeaderChip(symbol: "plus", name: "New set", tint: Brand.accent) {
+                importingSet = true
             }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            Button { studyingVoice = true } label: {
-                Label("Voice", systemImage: "mic.fill")
-            }
-            .disabled(selectedSets.isEmpty)
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Button { importingSet = true } label: {
-                Label("New Set", systemImage: "plus")
-            }
-        }
+        .padding(.horizontal, 18)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
+        .background(Brand.canvas)
+    }
+
+    private func start(_ mode: StudyMode) {
+        Haptics.knock()
+        studyMode = mode
     }
 
     private func toggle(_ id: String) {
+        Haptics.select()
         if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
     }
     private func toggleAll() {

@@ -46,10 +46,13 @@ struct SettingsView: View {
                         }
                     }
                 } footer: {
-                    Text("Flashcards never edits your .md files. The only file it writes is \(FlagStore.filename), in your first folder.")
+                    Text("Crash Cards never edits your .md files. The only file it writes is \(FlagStore.filename), in your first folder.")
                 }
             }
-            .navigationTitle("Settings")
+            .scrollContentBackground(.hidden)
+            .background(Brand.canvas)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top) { ScreenHeader("Settings") }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
                 switch result {
                 case .success(let url): library.addFolder(url)

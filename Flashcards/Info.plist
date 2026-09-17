@@ -23,6 +23,7 @@
 			<string>com.advaymonga.Flashcards.gate</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<string>crashcards</string>
 				<string>flashcards</string>
 			</array>
 		</dict>

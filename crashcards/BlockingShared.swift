@@ -6,7 +6,7 @@ import DeviceActivity
 /// State shared between the app and its Screen Time extensions, via the App Group.
 /// The extensions run in their own processes, so this is the only channel between them.
 enum BlockingShared {
-    static let appGroup = "group.com.advaymonga.Flashcards"
+    static let appGroup = "group.com.advaymonga.crashcards"
     /// The scheduled window whose start re-applies the shield after an unlock expires.
     static let relockActivity = DeviceActivityName("relock")
 

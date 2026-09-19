@@ -1,5 +1,5 @@
 import Testing
-@testable import Flashcards
+@testable import crashcards
 
 /// A mode is never entered with nothing it can show.
 @Suite struct StudyModeTests {

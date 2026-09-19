@@ -1,5 +1,5 @@
 import Testing
-@testable import Flashcards
+@testable import crashcards
 
 /// Pasted text, in whatever shape it arrived.
 @Suite struct ImportParserTests {

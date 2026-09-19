@@ -16,7 +16,7 @@ enum InboxError: LocalizedError {
 enum SharedInbox {
     /// Same group as BlockingShared, repeated so the share extension needn't import
     /// Family Controls just to read a constant.
-    static let appGroup = "group.com.advaymonga.Flashcards"
+    static let appGroup = "group.com.advaymonga.crashcards"
 
     private static var directory: URL? {
         guard let container = FileManager.default.containerURL(

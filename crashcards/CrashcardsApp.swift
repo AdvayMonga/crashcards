@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct FlashcardsApp: App {
+struct CrashcardsApp: App {
     @State private var library = LibraryStore()
     @State private var flags = FlagStore()
     @State private var blocking = ScreenTimeManager()

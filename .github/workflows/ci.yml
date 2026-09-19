@@ -43,8 +43,8 @@ jobs:
       - name: Test
         run: |
           xcodebuild test \
-            -project Flashcards.xcodeproj \
-            -scheme Flashcards \
+            -project crashcards.xcodeproj \
+            -scheme crashcards \
             -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
             CODE_SIGNING_ALLOWED=NO
 

@@ -1,5 +1,5 @@
 import Testing
-@testable import Flashcards
+@testable import crashcards
 
 /// Deck navigation and scoring.
 @Suite struct StudySessionTests {

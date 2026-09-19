@@ -1,5 +1,5 @@
 import Testing
-@testable import Flashcards
+@testable import crashcards
 
 /// Spreadsheet exports. Every case here is one that shipped broken at some point.
 @Suite struct DelimitedParserTests {

@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Flashcards
+@testable import crashcards
 
 /// Which files are sets, what they're called, and what a set may be saved as.
 @Suite struct SetFileTests {

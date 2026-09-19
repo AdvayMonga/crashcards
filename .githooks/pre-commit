@@ -25,7 +25,7 @@ device=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9][^(]*' 
 
 echo "pre-commit: running tests on $device…"
 xcodegen generate >/dev/null
-if ! xcodebuild test -project Flashcards.xcodeproj -scheme Flashcards \
+if ! xcodebuild test -project crashcards.xcodeproj -scheme crashcards \
         -destination "platform=iOS Simulator,name=$device" \
         CODE_SIGNING_ALLOWED=NO -quiet >/tmp/flashcards-pre-commit.log 2>&1; then
     grep -E '✘|error:' /tmp/flashcards-pre-commit.log | head -20

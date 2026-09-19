@@ -1,5 +1,5 @@
 import Testing
-@testable import Flashcards
+@testable import crashcards
 
 /// The `.md` card syntax, and the complaints it makes about files that nearly parse.
 @Suite struct MarkdownParserTests {

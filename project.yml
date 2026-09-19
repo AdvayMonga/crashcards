@@ -1,6 +1,6 @@
 # xcodegen spec — source of truth for the Xcode project.
 # Regenerate with:  xcodegen generate
-name: Flashcards
+name: crashcards
 options:
   bundleIdPrefix: com.advaymonga
   deploymentTarget:
@@ -13,31 +13,31 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
 # Only the app is meant to be run; the extensions ship inside it.
 schemes:
-  Flashcards:
+  crashcards:
     build:
       targets:
-        Flashcards: all
-        FlashcardsTests: [test]
+        crashcards: all
+        crashcardsTests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - FlashcardsTests
+        - crashcardsTests
     archive:
       config: Release
 
 targets:
-  Flashcards:
+  crashcards:
     type: application
     platform: iOS
     sources:
-      - path: Flashcards
+      - path: crashcards
     info:
-      path: Flashcards/Info.plist
+      path: crashcards/Info.plist
       properties:
         CFBundleURLTypes:
-          - CFBundleURLName: com.advaymonga.Flashcards.gate
+          - CFBundleURLName: com.advaymonga.crashcards.gate
             # flashcards:// stays accepted so a Shortcut set up before the rename keeps working.
             CFBundleURLSchemes: [crashcards, flashcards]
     dependencies:
@@ -45,14 +45,14 @@ targets:
       - target: DeviceActivityMonitorExt
       - target: ShareExtension
     entitlements:
-      path: Flashcards/Flashcards.entitlements
+      path: crashcards/crashcards.entitlements
       properties:
         com.apple.developer.family-controls: true
         com.apple.security.application-groups:
-          - group.com.advaymonga.Flashcards
+          - group.com.advaymonga.crashcards
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.crashcards
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Crash Cards
         TARGETED_DEVICE_FAMILY: "1"                 # iPhone only
@@ -69,7 +69,7 @@ targets:
     platform: iOS
     sources:
       - path: ShieldConfig
-      - path: Flashcards/BlockingShared.swift
+      - path: crashcards/BlockingShared.swift
     info:
       path: ShieldConfig/Info.plist
       properties:
@@ -82,10 +82,10 @@ targets:
       properties:
         com.apple.developer.family-controls: true
         com.apple.security.application-groups:
-          - group.com.advaymonga.Flashcards
+          - group.com.advaymonga.crashcards
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.ShieldConfig
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.crashcards.ShieldConfig
 
   # Re-applies the shield when an unlock window expires, with the app closed.
   DeviceActivityMonitorExt:
@@ -93,7 +93,7 @@ targets:
     platform: iOS
     sources:
       - path: DeviceActivityMonitorExt
-      - path: Flashcards/BlockingShared.swift
+      - path: crashcards/BlockingShared.swift
     info:
       path: DeviceActivityMonitorExt/Info.plist
       properties:
@@ -106,10 +106,10 @@ targets:
       properties:
         com.apple.developer.family-controls: true
         com.apple.security.application-groups:
-          - group.com.advaymonga.Flashcards
+          - group.com.advaymonga.crashcards
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.DeviceActivityMonitor
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.crashcards.DeviceActivityMonitor
 
   # Captures text shared from other apps; the app parses it, with a preview.
   ShareExtension:
@@ -117,7 +117,7 @@ targets:
     platform: iOS
     sources:
       - path: ShareExtension
-      - path: Flashcards/SharedInbox.swift
+      - path: crashcards/SharedInbox.swift
     info:
       path: ShareExtension/Info.plist
       properties:
@@ -134,20 +134,20 @@ targets:
       path: ShareExtension/ShareExtension.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.com.advaymonga.Flashcards
+          - group.com.advaymonga.crashcards
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.ShareExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.crashcards.ShareExtension
 
   # Pure-logic tests: parsers, session state, links. No UI, no device behaviour.
-  FlashcardsTests:
+  crashcardsTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests
     dependencies:
-      - target: Flashcards
+      - target: crashcards
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.Flashcards.Tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.crashcards.Tests
         GENERATE_INFOPLIST_FILE: YES

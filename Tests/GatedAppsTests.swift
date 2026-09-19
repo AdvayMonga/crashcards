@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Flashcards
+@testable import crashcards
 
 /// The links a Shortcuts automation sends us.
 @Suite struct GatedAppsTests {

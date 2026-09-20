@@ -60,8 +60,6 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Used to hear your spoken answers during voice study."
-        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Used to understand your spoken answers during voice study."
 
   # Customizes the system block screen. Shares BlockingShared with the app.
   ShieldConfig:

@@ -6,7 +6,6 @@ struct SetListView: View {
     @Environment(FlagStore.self) private var flags
     @State private var selected: Set<String> = Prefs.selectedSetIDs
     @State private var studyMode: StudyMode?
-    @State private var studyingVoice = false
     @State private var importingFolder = false
     @State private var importingSet = false
 
@@ -31,12 +30,8 @@ struct SetListView: View {
                         switch mode {
                         case .flashcards: CardDeckView(cards: cards)
                         case .quiz: QuizView(session: StudySession(cards: cards))
-                        case .voice: VoiceStudyView(session: StudySession(cards: cards))
                         }
                     }
-                }
-                .navigationDestination(isPresented: $studyingVoice) {
-                    destination(for: .voice) { VoiceStudyView(session: StudySession(cards: $0)) }
                 }
         }
         .onChange(of: library.sets.map(\.id)) { _, ids in
@@ -215,11 +210,6 @@ struct SetListView: View {
             if !library.sets.isEmpty {
                 Button(allSelected ? "Clear" : "All") { toggleAll() }
                     .buttonStyle(CrashButton(kind: .ghost, fullWidth: false))
-                HeaderChip(symbol: "mic.fill", name: "Voice study", tint: Brand.accent) {
-                    studyingVoice = true
-                }
-                .disabled(selectedSets.isEmpty)
-                .opacity(selectedSets.isEmpty ? 0.4 : 1)
             }
             HeaderChip(symbol: "plus", name: "New set", tint: Brand.accent) {
                 importingSet = true

@@ -48,6 +48,7 @@ struct QuizView: View {
 
     private func question(_ card: Card) -> some View {
         VStack(spacing: 22) {
+            Spacer(minLength: 0)
             Text(card.prompt)
                 .font(.brandCard)
                 .foregroundStyle(Brand.cardInk)
@@ -66,7 +67,7 @@ struct QuizView: View {
                 }
                 .breathing(0.7, period: 3.3)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
 
             // Answers sit low, where your thumb already is.
             VStack(spacing: 12) {

@@ -137,11 +137,7 @@ struct FocusView: View {
                 }
             }
             PanelRow(first: gatedApps.isEmpty) {
-                Button("Add an app") {
-                    Haptics.tap()
-                    addingApp = true
-                }
-                .buttonStyle(CrashButton(kind: .ghost, tint: Brand.gold, fullWidth: false))
+                PanelAction(title: "Add an app") { addingApp = true }
             }
         }
     }
@@ -163,11 +159,9 @@ struct FocusView: View {
                 }
             }
             PanelRow(first: apps.isEmpty && categories.isEmpty) {
-                Button(manager.hasSelection ? "Change apps" : "Choose apps") {
-                    Haptics.tap()
+                PanelAction(title: manager.hasSelection ? "Change apps" : "Choose apps") {
                     pickerShown = true
                 }
-                .buttonStyle(CrashButton(kind: .ghost, tint: Brand.gold, fullWidth: false))
             }
         }
     }

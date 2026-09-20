@@ -75,11 +75,7 @@ struct SettingsView: View {
                 }
             }
             PanelRow(first: false) {
-                Button("Add folder…") {
-                    Haptics.tap()
-                    importing = true
-                }
-                .buttonStyle(CrashButton(kind: .ghost, tint: Brand.gold, fullWidth: false))
+                PanelAction(title: "Add folder…") { importing = true }
             }
         }
     }

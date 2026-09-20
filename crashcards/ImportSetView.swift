@@ -99,11 +99,7 @@ struct ImportSetView: View {
                 }
             }
             PanelRow {
-                Button("Open a file…") {
-                    Haptics.tap()
-                    importingFile = true
-                }
-                .buttonStyle(CrashButton(kind: .ghost, tint: Brand.gold, fullWidth: false))
+                PanelAction(title: "Open a file…") { importingFile = true }
             }
         }
     }

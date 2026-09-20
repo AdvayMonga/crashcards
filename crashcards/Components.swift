@@ -312,6 +312,28 @@ struct PanelRow<Content: View>: View {
     }
 }
 
+/// A button that *is* a panel row. A `CrashButton` here would add its own padding on top
+/// of the row's, which is what made these rows twice as tall as the ones around them.
+struct PanelAction: View {
+    let title: String
+    var tint: Color = Brand.gold
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            HStack(spacing: 0) {
+                Text(title).font(.brandLabel).foregroundStyle(tint)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
+    }
+}
+
 /// `label — value`, the shape most settings rows take.
 struct StatRow: View {
     let label: String
@@ -371,36 +393,53 @@ struct CrashToggle: View {
     }
 }
 
-/// A row of slabs where exactly one is lit. Replaces `Picker`.
+/// A grid of slabs where exactly one is lit. Replaces `Picker`.
+///
+/// It wraps rather than squeezing: the import screen offers seven formats, and seven labels
+/// across one row is seven truncated labels.
 struct CrashSegmented<Value: Hashable>: View {
     let options: [(value: Value, title: String)]
     @Binding var selection: Value
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var perRow: Int { min(options.count, 3) }
+
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(options, id: \.value) { option in
-                let on = option.value == selection
-                Button {
-                    Haptics.select()
-                    selection = option.value
-                } label: {
-                    Text(option.title)
-                        .font(.brandCaption)
-                        .foregroundStyle(on ? Brand.outline : Brand.inkDim)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 6)
-                        .slab(on ? Brand.gold : Brand.surfaceLedge, radius: 9,
-                              lift: on ? 0 : 3, highlight: on ? 0.22 : 0.04)
+        VStack(spacing: 8) {
+            ForEach(Array(stride(from: 0, to: options.count, by: perRow)), id: \.self) { start in
+                HStack(spacing: 8) {
+                    ForEach(options[start..<min(start + perRow, options.count)], id: \.value) {
+                        option in cell(option)
+                    }
+                    // Keeps a short last row's cells the same width as the rows above it.
+                    ForEach(0..<max(0, start + perRow - options.count), id: \.self) { _ in
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                    }
                 }
-                .buttonStyle(.pressable)
-                .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
             }
         }
         .animation(Motion.pop(reduceMotion), value: selection)
+    }
+
+    private func cell(_ option: (value: Value, title: String)) -> some View {
+        let on = option.value == selection
+        return Button {
+            Haptics.select()
+            selection = option.value
+        } label: {
+            Text(option.title)
+                .font(.brandCaption)
+                .foregroundStyle(on ? Brand.outline : Brand.inkDim)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 6)
+                .slab(on ? Brand.gold : Brand.surfaceLedge, radius: 9,
+                      lift: on ? 0 : 3, highlight: on ? 0.22 : 0.04)
+        }
+        .buttonStyle(.pressable)
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
     }
 }
 

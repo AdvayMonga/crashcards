@@ -65,7 +65,11 @@ struct CardDeckView: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(Array(deck.enumerated()), id: \.offset) { index, card in
+                    // Held to a playing card's proportions rather than filling the page, so
+                    // there is always table around it.
                     FlipCard(card: card)
+                        .aspectRatio(0.72, contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .containerRelativeFrame(.vertical)
@@ -137,11 +141,14 @@ private struct FlipCard: View {
     /// that make a rectangle read as a playing card rather than a panel.
     private func face(_ text: String, index: String, tint: Color, hint: String) -> some View {
         ZStack {
+            // The shadow belongs to the stock, not to what's printed on it — put it on the
+            // whole stack and the card's own text gets a blurry halo.
             RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
                 .fill(Brand.cardFace)
+                .shadow(color: .black.opacity(0.5), radius: 16, y: 12)
                 .overlay(
                     RoundedRectangle(cornerRadius: Brand.cardRadius - 6, style: .continuous)
-                        .strokeBorder(tint.opacity(0.30), lineWidth: 2)
+                        .strokeBorder(tint.opacity(0.45), lineWidth: 2)
                         .padding(9))
                 .overlay(
                     RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
@@ -174,15 +181,14 @@ private struct FlipCard: View {
                     rank(index, tint: tint).rotationEffect(.degrees(180))
                 }
             }
-            .padding(18)
+            .padding(16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .shadow(color: .black.opacity(0.45), radius: 14, y: 10)
     }
 
     private func rank(_ text: String, tint: Color) -> some View {
         Text(text)
-            .font(.pixel(20))
+            .font(.pixel(28))
             .foregroundStyle(tint)
     }
 }

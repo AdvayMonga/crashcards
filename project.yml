@@ -36,6 +36,9 @@ targets:
     info:
       path: crashcards/Info.plist
       properties:
+        # No custom cryptography, so the App Store Connect export-compliance question is
+        # answered here once instead of on every upload.
+        ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLName: com.advaymonga.crashcards.gate
             # flashcards:// stays accepted so a Shortcut set up before the rename keeps working.

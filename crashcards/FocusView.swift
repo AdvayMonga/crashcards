@@ -16,139 +16,178 @@ struct FocusView: View {
     private let tick = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section { status.listRowInsets(EdgeInsets()).listRowBackground(Color.clear) }
-
-                Section {
-                    Toggle("Block apps", isOn: blockingBinding)
-                .font(.brandBody)
-                .tint(Brand.accent)
-                } footer: {
-                    Text("Opening a blocked app shows a block screen. Answer \(ScreenTimeManager.questionsToUnlock) questions here to unlock everything for \(ScreenTimeManager.unlockMinutes) minutes.")
-                }
-
-                gatedSection
-
-                Section("Blocked apps") {
-                    ForEach(Array(manager.selection.applicationTokens), id: \.self) { token in
-                        Label(token)
-                    }
-                    ForEach(Array(manager.selection.categoryTokens), id: \.self) { token in
-                        Label(token)
-                    }
-                    Button(manager.hasSelection ? "Change apps" : "Choose apps") {
-                        Haptics.tap()
-                        pickerShown = true
-                    }
-                    .font(.brandBody)
-                }
-
+        ScrollView {
+            VStack(spacing: 16) {
+                status
+                blockingPanel
+                gatedPanel
+                appsPanel
                 if let error = manager.errorText {
-                    Section { Text(error).foregroundStyle(.red) }
+                    Text(error)
+                        .font(.reading(14))
+                        .foregroundStyle(Brand.mult)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .slab(Brand.surface)
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Brand.canvas)
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top) { ScreenHeader("Focus") }
-            .familyActivityPicker(isPresented: $pickerShown, selection: pickerBinding)
-            .sheet(isPresented: $addingApp) {
-                AddGatedAppView { app in
-                    GatedApps.add(app)
-                    gatedApps = GatedApps.all
+            .padding(.horizontal, 18)
+            .padding(.bottom, 16)
+        }
+        .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .top) { ScreenHeader("Focus") }
+        .familyActivityPicker(isPresented: $pickerShown, selection: pickerBinding)
+        .screenLayer(isPresented: $addingApp) {
+            AddGatedAppView(onClose: { addingApp = false }) { app in
+                GatedApps.add(app)
+                gatedApps = GatedApps.all
+            }
+        }
+        .screenLayer(isPresented: $unlocking) {
+            UnlockView(cards: library.quizCards, manager: manager) { unlocking = false }
+        }
+        .onReceive(tick) { _ in manager.refresh() }
+    }
+
+    /// The one thing this screen is really answering: can I open my apps right now?
+    private var status: some View {
+        VStack(spacing: 14) {
+            PixelIcon(glyph: statusGlyph, size: 54, color: statusColor)
+                .padding(24)
+                .slab(Brand.surfaceHigh, radius: Brand.cardRadius)
+                .breathing(manager.isShieldActive ? 1.6 : 0.8, period: 3.0)
+
+            Text(statusTitle)
+                .font(.brandTitle)
+                .foregroundStyle(Brand.ink)
+
+            if let until = manager.unlockedUntil {
+                Text(until, style: .timer)
+                    .font(.pixel(30))
+                    .foregroundStyle(Brand.green)
+                    .monospacedDigit()
+            } else if !statusDetail.isEmpty {
+                Text(statusDetail)
+                    .font(.reading(15))
+                    .foregroundStyle(Brand.inkDim)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if manager.isShieldActive {
+                Button("Answer \(ScreenTimeManager.questionsToUnlock) questions to unlock") {
+                    Haptics.thud()
+                    unlocking = true
                 }
+                .buttonStyle(.solid)
+                .disabled(library.quizCards.isEmpty)
+                .padding(.top, 4)
             }
-            .sheet(isPresented: $unlocking) {
-                NavigationStack { UnlockView(cards: library.quizCards, manager: manager) }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+        .padding(.horizontal, 18)
+    }
+
+    private var blockingPanel: some View {
+        Panel(footnote: "Opening a blocked app shows a block screen. Answer \(ScreenTimeManager.questionsToUnlock) questions here to unlock everything for \(ScreenTimeManager.unlockMinutes) minutes.") {
+            PanelRow(first: true) {
+                CrashToggle(label: "Block apps", isOn: blockingBinding)
             }
-            .onReceive(tick) { _ in manager.refresh() }
         }
     }
 
     /// Apps that hand you to the questions and take you back when you're done.
-    @ViewBuilder private var gatedSection: some View {
-        Section {
-            ForEach(gatedApps) { app in
-                Button {
-                    UIPasteboard.general.string = app.triggerURL
-                    copied = app.id
-                    Task {
-                        try? await Task.sleep(for: .seconds(2))
-                        if copied == app.id { copied = nil }
-                    }
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(app.name).font(.brandBody).foregroundStyle(.primary)
-                            Text(copied == app.id ? "Link copied" : app.triggerURL)
-                                .font(.caption)
-                                .foregroundStyle(copied == app.id ? .green : .secondary)
+    private var gatedPanel: some View {
+        Panel(title: "Straight to the questions",
+              footnote: "Set this up once per app in Shortcuts: Automation → When \(gatedApps.first?.name ?? "an app") is opened → Run Immediately → Open URL, pasted from the row above. Opening that app then jumps here for the questions and back to it when you pass.") {
+            ForEach(Array(gatedApps.enumerated()), id: \.element.id) { index, app in
+                PanelRow(first: index == 0) {
+                    HStack(spacing: 10) {
+                        Button { copy(app) } label: {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(app.name)
+                                        .font(.brandLabel)
+                                        .foregroundStyle(Brand.ink)
+                                    Text(copied == app.id ? "Link copied" : app.triggerURL)
+                                        .font(.reading(12))
+                                        .foregroundStyle(copied == app.id ? Brand.green : Brand.inkFaint)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                                PixelIcon(glyph: .copy, size: 16, color: Brand.inkDim)
+                            }
+                            .contentShape(Rectangle())
                         }
-                        Spacer()
-                        Image(systemName: "doc.on.doc").foregroundStyle(.secondary)
+                        .buttonStyle(.pressable)
+
+                        Button {
+                            Haptics.tap()
+                            GatedApps.remove(app)
+                            gatedApps = GatedApps.all
+                        } label: {
+                            PixelIcon(glyph: .close, size: 14, color: Brand.mult)
+                                .frame(width: 32, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.pressable)
+                        .accessibilityLabel("Remove \(app.name)")
                     }
                 }
             }
-            .onDelete { offsets in
-                offsets.map { gatedApps[$0] }.forEach(GatedApps.remove)
-                gatedApps = GatedApps.all
-            }
-            Button("Add an app") {
-                Haptics.tap()
-                addingApp = true
-            }
-            .font(.brandBody)
-        } header: {
-            Text("Straight to the questions")
-        } footer: {
-            Text("Set this up once per app in Shortcuts: Automation → When \(gatedApps.first?.name ?? "an app") is opened → Run Immediately → Open URL, pasted from the row above. Opening that app then jumps here for the questions and back to it when you pass.")
-        }
-    }
-
-    /// The one thing this screen is really answering: can I open my apps right now?
-    @ViewBuilder private var status: some View {
-        VStack(spacing: 12) {
-            Image(systemName: statusIcon)
-                .font(.system(size: 46))
-                .foregroundStyle(statusColor)
-                .padding(26)
-                .background(Circle().fill(statusColor.opacity(0.12)))
-                .contentTransition(.symbolEffect(.replace))
-            Text(statusTitle)
-                .font(.brandTitle)
-            if let until = manager.unlockedUntil {
-                Text(until, style: .timer)
-                    .font(.brand(22, .bold).monospacedDigit())
-                    .foregroundStyle(Brand.correct)
-            } else {
-                Text(statusDetail)
-                    .font(.brandBody)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            if manager.isShieldActive {
-                Button("Answer \(ScreenTimeManager.questionsToUnlock) questions to unlock") {
-                    Haptics.knock()
-                    unlocking = true
+            PanelRow(first: gatedApps.isEmpty) {
+                Button("Add an app") {
+                    Haptics.tap()
+                    addingApp = true
                 }
-                .buttonStyle(.solid)
-                .padding(.horizontal, 20)
-                .padding(.top, 6)
-                .disabled(library.quizCards.isEmpty)
+                .buttonStyle(CrashButton(kind: .ghost, tint: Brand.gold, fullWidth: false))
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
     }
 
-    private var statusIcon: String {
-        if manager.isShieldActive { return "lock.fill" }
-        return manager.isBlocking ? "lock.open.fill" : "lock.slash"
+    /// The tokens are rendered by FamilyControls, which only ever draws them its own way.
+    private var appsPanel: some View {
+        Panel(title: "Blocked apps") {
+            let apps = Array(manager.selection.applicationTokens)
+            let categories = Array(manager.selection.categoryTokens)
+
+            ForEach(Array(apps.enumerated()), id: \.element) { index, token in
+                PanelRow(first: index == 0) {
+                    Label(token).font(.reading(15)).foregroundStyle(Brand.ink)
+                }
+            }
+            ForEach(Array(categories.enumerated()), id: \.element) { index, token in
+                PanelRow(first: apps.isEmpty && index == 0) {
+                    Label(token).font(.reading(15)).foregroundStyle(Brand.ink)
+                }
+            }
+            PanelRow(first: apps.isEmpty && categories.isEmpty) {
+                Button(manager.hasSelection ? "Change apps" : "Choose apps") {
+                    Haptics.tap()
+                    pickerShown = true
+                }
+                .buttonStyle(CrashButton(kind: .ghost, tint: Brand.gold, fullWidth: false))
+            }
+        }
+    }
+
+    private func copy(_ app: GatedApp) {
+        Haptics.tap()
+        UIPasteboard.general.string = app.triggerURL
+        copied = app.id
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            if copied == app.id { copied = nil }
+        }
+    }
+
+    private var statusGlyph: PixelGlyph {
+        manager.isShieldActive ? .lockClosed : .lockOpen
     }
     private var statusColor: Color {
-        if manager.isShieldActive { return .accentColor }
-        return manager.isBlocking ? .green : .secondary
+        if manager.isShieldActive { return Brand.gold }
+        return manager.isBlocking ? Brand.green : Brand.inkFaint
     }
     private var statusTitle: String {
         if manager.isShieldActive { return "Apps blocked" }

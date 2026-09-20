@@ -9,10 +9,10 @@ struct ImportSetView: View {
     /// Text handed in by the share sheet, when the import didn't start here.
     var initialText: String = ""
     var initialTitle: String = ""
+    let onClose: () -> Void
     let onSaved: () -> Void
 
     @Environment(LibraryStore.self) private var library
-    @Environment(\.dismiss) private var dismiss
 
     @State private var text = ""
     @State private var title = ""
@@ -40,108 +40,116 @@ struct ImportSetView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                sourceSection
+        CrashModal(title: "New set",
+                   confirm: (label: "Save",
+                             enabled: !(result?.cards.isEmpty ?? true),
+                             action: save),
+                   onCancel: onClose) {
+            VStack(spacing: 16) {
+                sourcePanel
                 if let result {
-                    previewSection(result)
-                    destinationSection
+                    previewPanel(result)
+                    destinationPanel
                 }
                 if let error {
-                    Section { Text(error).foregroundStyle(.red) }
+                    Text(error)
+                        .font(.reading(14))
+                        .foregroundStyle(Brand.mult)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .slab(Brand.surface)
                 }
             }
-            .navigationTitle("New Set")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+        }
+        .fileImporter(isPresented: $importingFile,
+                      allowedContentTypes: [.plainText, .commaSeparatedText, .text]) { result in
+            load(from: result)
+        }
+        .onAppear {
+            if text.isEmpty { text = initialText }
+            if title.isEmpty { title = initialTitle }
+            reparse()
+        }
+        .onChange(of: text) { _, _ in layout = nil; reparse() }
+        .onChange(of: layout) { _, _ in reparse() }
+    }
+
+    // MARK: - Panels
+
+    private var sourcePanel: some View {
+        Panel(title: "Source",
+              footnote: "Quizlet: open a set → Export → copy, and paste it above. Google Docs: share the doc so anyone with the link can view, then paste the link.") {
+            PanelRow(first: true) {
+                CrashField(placeholder: "Set name", text: $title)
+            }
+            PanelRow {
+                CrashField(placeholder: "Paste your cards here", text: $text,
+                           multiline: true, minHeight: 150, mono: true)
+            }
+            PanelRow {
+                HStack(spacing: 10) {
+                    CrashField(placeholder: "Or fetch a link", text: $urlString)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                    Button(fetching ? "…" : "Fetch") { Task { await fetch() } }
+                        .buttonStyle(CrashButton(kind: .solid, tint: Brand.chips, fullWidth: false))
+                        .disabled(urlString.isEmpty || fetching)
+                        .opacity(urlString.isEmpty || fetching ? 0.45 : 1)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") { save() }
-                        .disabled(result?.cards.isEmpty ?? true)
+            }
+            PanelRow {
+                Button("Open a file…") {
+                    Haptics.tap()
+                    importingFile = true
                 }
+                .buttonStyle(CrashButton(kind: .ghost, tint: Brand.gold, fullWidth: false))
             }
-            .fileImporter(isPresented: $importingFile,
-                          allowedContentTypes: [.plainText, .commaSeparatedText, .text]) { result in
-                load(from: result)
-            }
-            .onAppear {
-                if text.isEmpty { text = initialText }
-                if title.isEmpty { title = initialTitle }
-                reparse()
-            }
-            .onChange(of: text) { _, _ in layout = nil; reparse() }
-            .onChange(of: layout) { _, _ in reparse() }
         }
     }
 
-    // MARK: - Sections
-
-    private var sourceSection: some View {
-        Section {
-            TextField("Set name", text: $title)
-            TextEditor(text: $text)
-                .frame(minHeight: 140)
-                .font(.callout.monospaced())
-                .overlay(alignment: .topLeading) {
-                    if text.isEmpty {
-                        Text("Paste your cards here")
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 8)
-                            .allowsHitTesting(false)
-                    }
-                }
-            HStack {
-                TextField("Or fetch a link", text: $urlString)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                Button(fetching ? "Fetching…" : "Fetch") { Task { await fetch() } }
-                    .disabled(urlString.isEmpty || fetching)
-            }
-            Button("Open a File…") { importingFile = true }
-        } footer: {
-            Text("Quizlet: open a set → Export → copy, and paste it above. Google Docs: share the doc so anyone with the link can view, then paste the link.")
-        }
-    }
-
-    private func previewSection(_ result: ImportParser.Result) -> some View {
-        Section {
-            Picker("Format", selection: layoutBinding(result.layout)) {
-                ForEach(ImportParser.Layout.allCases) { option in
-                    Text(option.title).tag(option)
-                }
+    private func previewPanel(_ result: ImportParser.Result) -> some View {
+        Panel(title: result.cards.count == 1 ? "1 card found" : "\(result.cards.count) cards found",
+              footnote: result.skipped > 0
+                ? "\(result.skipped) line\(result.skipped == 1 ? "" : "s") didn't look like a card and won't be imported. Try another format above if that's wrong."
+                : nil) {
+            PanelRow(first: true) {
+                CrashSegmented(
+                    options: ImportParser.Layout.allCases.map { ($0, $0.title) },
+                    selection: layoutBinding(result.layout))
             }
             ForEach(result.cards.prefix(8)) { card in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(card.prompt).font(.subheadline)
-                    Text(card.answer).font(.caption).foregroundStyle(.secondary)
+                PanelRow {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(card.prompt)
+                            .font(.reading(15))
+                            .foregroundStyle(Brand.ink)
+                        Text(card.answer)
+                            .font(.reading(13))
+                            .foregroundStyle(Brand.inkDim)
+                    }
                 }
             }
             if result.cards.count > 8 {
-                Text("and \(result.cards.count - 8) more")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text(result.cards.count == 1 ? "1 card found" : "\(result.cards.count) cards found")
-        } footer: {
-            if result.skipped > 0 {
-                Text("\(result.skipped) line\(result.skipped == 1 ? "" : "s") didn't look like a card and won't be imported. Try another format above if that's wrong.")
+                PanelRow {
+                    Text("and \(result.cards.count - 8) more")
+                        .font(.brandCaption)
+                        .foregroundStyle(Brand.inkFaint)
+                }
             }
         }
     }
 
-    @ViewBuilder private var destinationSection: some View {
+    @ViewBuilder private var destinationPanel: some View {
         if library.hasFolders {
-            Section {
-                Picker("Save to", selection: $saveToFolder) {
-                    Text(library.folders.first?.name ?? "My folder").tag(true)
-                    Text("In the app").tag(false)
+            Panel(title: "Save to",
+                  footnote: "Saved as a new .md file. Existing files are never changed.") {
+                PanelRow(first: true) {
+                    CrashSegmented(
+                        options: [(true, library.folders.first?.name ?? "My folder"),
+                                  (false, "In the app")],
+                        selection: $saveToFolder)
                 }
-            } footer: {
-                Text("Saved as a new .md file. Existing files are never changed.")
             }
         }
     }
@@ -224,8 +232,9 @@ struct ImportSetView: View {
             } else {
                 try LocalLibrary.save(markdown, named: effectiveTitle)
             }
+            Haptics.correct()
             onSaved()
-            dismiss()
+            onClose()
         } catch {
             self.error = error.localizedDescription
         }

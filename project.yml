@@ -36,6 +36,11 @@ targets:
     info:
       path: crashcards/Info.plist
       properties:
+        # The app draws its own dark table; the system light appearance would fight it.
+        UIUserInterfaceStyle: Dark
+        UIAppFonts:
+          - PixelifySans-Regular.ttf
+          - PixelifySans-Bold.ttf
         CFBundleURLTypes:
           - CFBundleURLName: com.advaymonga.crashcards.gate
             # flashcards:// stays accepted so a Shortcut set up before the rename keeps working.

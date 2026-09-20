@@ -8,80 +8,122 @@ import SwiftUI
 struct FileProblemsView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(FlagStore.self) private var flags
+    let onClose: () -> Void
 
     var body: some View {
-        List {
-            if library.issueCount == 0 && flags.loadError == nil {
-                Section {
-                    Label("No problems found", systemImage: "checkmark.circle")
-                        .foregroundStyle(.secondary)
-                }
-            }
+        ZStack {
+            TableBackground()
 
-            if let error = flags.loadError {
-                Section("\(FlagStore.filename)") {
-                    Text(error).font(.callout)
-                    Text("Flagging is paused so this file isn't overwritten. Fix or delete it, then reopen the app.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            ScrollView {
+                VStack(spacing: 16) {
+                    if library.issueCount == 0 && flags.loadError == nil {
+                        Panel {
+                            PanelRow(first: true) {
+                                HStack(spacing: 12) {
+                                    PixelIcon(glyph: .check, size: 18, color: Brand.green)
+                                    Text("No problems found")
+                                        .font(.brandLabel)
+                                        .foregroundStyle(Brand.ink)
+                                }
+                            }
+                        }
+                    }
 
-            if !library.folderErrors.isEmpty {
-                Section("Folders") {
-                    ForEach(library.folderErrors, id: \.self) { error in
-                        Label(error, systemImage: "folder.badge.questionmark")
-                            .font(.callout)
+                    if let error = flags.loadError {
+                        Panel(title: FlagStore.filename,
+                              footnote: "Flagging is paused so this file isn't overwritten. Fix or delete it, then reopen the app.") {
+                            PanelRow(first: true) {
+                                Text(error)
+                                    .font(.reading(14))
+                                    .foregroundStyle(Brand.mult)
+                            }
+                        }
+                    }
+
+                    if !library.folderErrors.isEmpty {
+                        Panel(title: "Folders") {
+                            ForEach(Array(library.folderErrors.enumerated()), id: \.element) { index, error in
+                                PanelRow(first: index == 0) {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        PixelIcon(glyph: .folder, size: 16, color: Brand.orange)
+                                        Text(error)
+                                            .font(.reading(14))
+                                            .foregroundStyle(Brand.ink)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    ForEach(library.fileIssues) { file in
+                        Panel(title: file.filename) {
+                            ForEach(Array(file.issues.enumerated()), id: \.element.id) { index, issue in
+                                PanelRow(first: index == 0) { issueRow(issue) }
+                            }
+                        }
+                    }
+
+                    Panel(title: "Correct format",
+                          footnote: "Everything else — prose, YAML frontmatter, code blocks — is ignored.") {
+                        PanelRow(first: true) {
+                            codeBlock(MarkdownParser.formatGuide)
+                        }
                     }
                 }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 20)
             }
-
-            ForEach(library.fileIssues) { file in
-                Section(file.filename) {
-                    ForEach(file.issues) { issue in
-                        issueRow(issue)
-                    }
-                }
-            }
-
-            Section("Correct format") {
-                codeBlock(MarkdownParser.formatGuide)
-                Text("Everything else — prose, YAML frontmatter, code blocks — is ignored.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            .scrollIndicators(.hidden)
         }
-        .navigationTitle("File Problems")
-        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top) { header }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            HeaderChip(glyph: .close, name: "Close") { onClose() }
+            Text("File problems")
+                .font(.brandTitle)
+                .foregroundStyle(Brand.ink)
+                .shadow(color: Brand.outline, radius: 0, x: 2, y: 2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 8)
     }
 
     private func issueRow(_ issue: ParseIssue) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(issue.line > 0 ? "Line \(issue.line)" : "Whole file")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(.brandCaption)
+                .foregroundStyle(Brand.gold)
             Text(issue.message)
-                .font(.callout)
+                .font(.reading(14))
+                .foregroundStyle(Brand.ink)
             if !issue.excerpt.isEmpty {
                 codeBlock(issue.excerpt)
             }
             Text("Expected:")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(.brandCaption)
+                .foregroundStyle(Brand.inkFaint)
             codeBlock(issue.expected)
         }
-        .padding(.vertical, 4)
     }
 
     private func codeBlock(_ text: String) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Text(text)
-                .font(.system(.footnote, design: .monospaced))
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(Brand.ink)
                 .textSelection(.enabled)
         }
-        .padding(8)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Brand.surfaceLedge)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Brand.outline, lineWidth: 2))
+        }
     }
 }

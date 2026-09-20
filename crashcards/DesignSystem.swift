@@ -3,163 +3,133 @@ import UIKit
 
 /// The app's visual language, in one place.
 ///
-/// Two decisions carry most of the personality: everything is set in SF Rounded, and every
-/// button sits on a ledge it presses into. Both are cheap, native, and unlike the default
-/// look you get for free — which is the point.
+/// The look is borrowed from Balatro: a dark felt table, chunky slabs outlined in near-black,
+/// every control sitting on a ledge it presses into, a pixel typeface, and motion that
+/// overshoots instead of easing. Nothing here is a system default — the palette is fixed
+/// rather than adaptive, the face is bundled, and the springs are ours.
 enum Brand {
-    static let accent = Color("AccentColor")
-    static let correct = Color(red: 0.22, green: 0.72, blue: 0.45)
-    static let wrong = Color(red: 0.91, green: 0.35, blue: 0.38)
 
-    /// Page background, and the card that floats on it.
-    static let canvas = Color(.systemGroupedBackground)
-    static let surface = Color(.secondarySystemGroupedBackground)
-    static let hairline = Color.primary.opacity(0.08)
+    // MARK: - The table
 
-    static let cardRadius: CGFloat = 28
-    static let controlRadius: CGFloat = 18
+    /// Deepest point of the felt, and the lighter sweep the background animates through.
+    static let tableDeep = Color(hex: 0x16222C)
+    static let tableLift = Color(hex: 0x2B4254)
+
+    /// A raised slab: panels, rows, headers. `surfaceHigh` is the one a finger is on.
+    static let surface = Color(hex: 0x30414E)
+    static let surfaceHigh = Color(hex: 0x3C5060)
+    /// The shadow side of a slab — the ledge it sits on.
+    static let surfaceLedge = Color(hex: 0x1C2A34)
+
+    /// Playing-card stock, and the ink printed on it.
+    static let cardFace = Color(hex: 0xF4EFE2)
+    static let cardInk = Color(hex: 0x21282E)
+
+    /// The near-black every shape is outlined in. This single line does most of the work.
+    static let outline = Color(hex: 0x0E1519)
+
+    // MARK: - Text
+
+    static let ink = Color(hex: 0xF2EDE1)
+    static let inkDim = Color(hex: 0x9DAEBB)
+    static let inkFaint = Color(hex: 0x6B7F8D)
+
+    // MARK: - Accents, named for what Balatro counts with them
+
+    /// Chips. The primary action.
+    static let chips = Color(hex: 0x009DFF)
+    /// Mult. Wrong answers, destructive things.
+    static let mult = Color(hex: 0xFE5F55)
+    /// Money. Highlights, scores, the selected state.
+    static let gold = Color(hex: 0xF0C040)
+    /// Right answers, and an unlocked shield.
+    static let green = Color(hex: 0x4BC292)
+    /// The second study mode.
+    static let purple = Color(hex: 0x9A6FC4)
+    /// Warnings — file problems.
+    static let orange = Color(hex: 0xFDA200)
+
+    static let accent = gold
+
+    // MARK: - Metrics
+
+    /// Corners are modest: a slab reads as cut, not as a pill.
+    static let slabRadius: CGFloat = 12
+    static let cardRadius: CGFloat = 16
+    /// Outline weight. Thick enough to be the shape's edge, not a hairline on it.
+    static let stroke: CGFloat = 2.5
+    /// How far a control stands off its ledge before you press it.
+    static let ledge: CGFloat = 5
 }
 
+extension Color {
+    init(hex: UInt32) {
+        self.init(.sRGB,
+                  red: Double((hex >> 16) & 0xFF) / 255,
+                  green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255,
+                  opacity: 1)
+    }
+}
+
+// MARK: - Type
+
+/// Pixelify Sans, bundled. A pixel face needs whole-pixel sizes to stay crisp, so every
+/// size here is even and `pixel(_:)` rounds anything Dynamic Type hands back.
 extension Font {
-    /// SF Rounded at a given size — the app's single typeface.
-    static func brand(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
+    private static let display = "PixelifySans-Bold"
+    private static let text = "PixelifySans-Regular"
+
+    /// The pixel face. `relativeTo` keeps Dynamic Type working on a custom font.
+    static func pixel(_ size: CGFloat, bold: Bool = true,
+                      relativeTo style: Font.TextStyle = .body) -> Font {
+        .custom(bold ? display : text, size: size.rounded(), relativeTo: style)
+    }
+
+    /// Long card text stays in a screen face — a pixel font at reading length is a chore.
+    static func reading(_ size: CGFloat, _ weight: Font.Weight = .medium) -> Font {
         .system(size: size, weight: weight, design: .rounded)
     }
 
-    static let brandDisplay = brand(30, .bold)
-    static let brandTitle = brand(24, .bold)
-    static let brandCard = brand(27, .semibold)
-    static let brandBody = brand(17, .medium)
-    static let brandLabel = brand(15, .semibold)
-    static let brandCaption = brand(13, .medium)
+    static let brandDisplay = pixel(34, relativeTo: .largeTitle)
+    static let brandTitle = pixel(26, relativeTo: .title)
+    static let brandLabel = pixel(18, relativeTo: .headline)
+    static let brandCaption = pixel(15, bold: false, relativeTo: .caption)
+    static let brandNumber = pixel(22, relativeTo: .title3)
+
+    /// The two faces used for card and answer text, where length varies wildly.
+    static let brandCard = reading(26, .semibold)
+    static let brandBody = reading(17, .medium)
+}
+
+// MARK: - Motion
+
+/// One motion vocabulary, so nothing in the app eases the way iOS eases by default.
+///
+/// Everything overshoots a little. `pop` is the house spring; `snap` is for things that
+/// must land before you look away; `settle` is for layout that shouldn't draw the eye.
+enum Motion {
+    static let pop = Animation.spring(response: 0.30, dampingFraction: 0.58)
+    static let snap = Animation.spring(response: 0.20, dampingFraction: 0.72)
+    static let settle = Animation.spring(response: 0.42, dampingFraction: 0.86)
+    static let deal = Animation.spring(response: 0.38, dampingFraction: 0.72)
+
+    /// Reduce Motion gets the same timing without the overshoot, so nothing jumps.
+    static func pop(_ reduced: Bool) -> Animation {
+        reduced ? .easeOut(duration: 0.18) : pop
+    }
+    static func deal(_ reduced: Bool) -> Animation {
+        reduced ? .easeOut(duration: 0.2) : deal
+    }
 }
 
 /// Feedback you feel: a tap to confirm, a knock for right, a buzz for wrong.
 enum Haptics {
     static func tap() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     static func knock() { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
+    static func thud() { UIImpactFeedbackGenerator(style: .heavy).impactOccurred() }
     static func select() { UISelectionFeedbackGenerator().selectionChanged() }
 
     static func correct() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
     static func wrong() { UINotificationFeedbackGenerator().notificationOccurred(.error) }
-}
-
-/// A button that sits on a ledge and presses into it. `tint` colours the solid kind.
-struct CrashButton: ButtonStyle {
-    enum Kind {
-        case solid      // the one thing to do here
-        case soft       // secondary, tinted but quiet
-        case ghost      // text only
-    }
-
-    var kind: Kind = .solid
-    var tint: Color = Brand.accent
-    var fullWidth = true
-
-    private var depth: CGFloat { kind == .ghost ? 0 : 4 }
-
-    func makeBody(configuration: Configuration) -> some View {
-        let pressed = configuration.isPressed
-
-        return configuration.label
-            .font(.brandLabel)
-            .foregroundStyle(foreground)
-            .frame(maxWidth: fullWidth ? .infinity : nil)
-            .padding(.vertical, 15)
-            .padding(.horizontal, 22)
-            .background(
-                RoundedRectangle(cornerRadius: Brand.controlRadius, style: .continuous)
-                    .fill(background)
-            )
-            .background(alignment: .bottom) {
-                // The ledge: a slice of darker colour the button sinks into when pressed.
-                RoundedRectangle(cornerRadius: Brand.controlRadius, style: .continuous)
-                    .fill(ledge)
-                    .offset(y: pressed ? 0 : depth)
-            }
-            .offset(y: pressed ? depth : 0)
-            .animation(.spring(response: 0.18, dampingFraction: 0.7), value: pressed)
-            .contentShape(Rectangle())
-    }
-
-    private var foreground: Color {
-        switch kind {
-        case .solid: return .white
-        case .soft, .ghost: return tint
-        }
-    }
-    private var background: Color {
-        switch kind {
-        case .solid: return tint
-        case .soft: return tint.opacity(0.14)
-        case .ghost: return .clear
-        }
-    }
-    private var ledge: Color {
-        switch kind {
-        case .solid: return tint.opacity(0.55)
-        case .soft: return tint.opacity(0.22)
-        case .ghost: return .clear
-        }
-    }
-}
-
-extension ButtonStyle where Self == CrashButton {
-    static var solid: CrashButton { CrashButton(kind: .solid) }
-    static var soft: CrashButton { CrashButton(kind: .soft) }
-    static var ghost: CrashButton { CrashButton(kind: .ghost, fullWidth: false) }
-    static func solid(_ tint: Color) -> CrashButton { CrashButton(kind: .solid, tint: tint) }
-}
-
-/// The screen title, drawn by us rather than the navigation bar — iOS 26 draws its own
-/// title in the system face, which would leave two typefaces in one app.
-struct ScreenHeader<Trailing: View>: View {
-    let title: String
-    @ViewBuilder var trailing: Trailing
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title).font(.brandDisplay)
-            Spacer()
-            trailing
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 4)
-        .padding(.bottom, 12)
-        .background(Brand.canvas)
-    }
-}
-
-extension ScreenHeader where Trailing == EmptyView {
-    init(_ title: String) {
-        self.init(title: title) { EmptyView() }
-    }
-}
-
-/// A slim progress bar. Replaces "3 / 12" as the primary signal — you read a bar faster.
-struct ProgressTrack: View {
-    let value: Int
-    let total: Int
-    /// What the bar is counting. Callers count different things, so none of them can share
-    /// a baked-in "Card N of M".
-    let label: String
-
-    private var fraction: CGFloat {
-        guard total > 0 else { return 0 }
-        return min(1, CGFloat(value) / CGFloat(total))
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Brand.accent.opacity(0.14))
-                Capsule()
-                    .fill(Brand.accent)
-                    .frame(width: max(0, geometry.size.width * fraction))
-            }
-        }
-        .frame(height: 8)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: fraction)
-        .accessibilityLabel(label)
-    }
 }

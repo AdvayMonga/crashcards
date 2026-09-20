@@ -40,6 +40,11 @@ struct SetListView: View {
                 }
         }
         .onChange(of: library.sets.map(\.id)) { _, ids in
+            // Only prune against a scan that actually saw everything. A folder that is
+            // offline, moved, or not yet downloaded from iCloud is reported as a recoverable
+            // folderError and its sets are simply absent — pruning on that would clear the
+            // selection permanently, since the next line writes it straight to Prefs.
+            guard library.folderErrors.isEmpty, library.loadError == nil else { return }
             selected = selected.intersection(ids)   // forget sets that no longer exist
         }
         .onChange(of: selected) { _, new in

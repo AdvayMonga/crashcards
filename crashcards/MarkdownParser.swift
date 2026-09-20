@@ -15,6 +15,7 @@ struct ParseIssue: Identifiable, Hashable {
         case malformedOption
         case orphanOptions
         case blankLineBeforeOptions
+        case unclosedFence
         case notText          // produced by FolderAccess, not the parser
         case shortRow         // produced by DelimitedParser: a row with nothing to answer
     }
@@ -47,6 +48,8 @@ struct ParseIssue: Identifiable, Hashable {
             return "These options have no question line above them."
         case .blankLineBeforeOptions:
             return "The options are separated from their question by a blank line."
+        case .unclosedFence:
+            return "This code fence is never closed, so everything below it was skipped."
         case .notText:
             return "This file isn't readable as text, so it was skipped."
         case .shortRow:
@@ -62,6 +65,8 @@ struct ParseIssue: Identifiable, Hashable {
         case .tooFewOptions, .noCorrectOption, .multipleCorrectOptions,
              .malformedOption, .orphanOptions, .blankLineBeforeOptions:
             return MarkdownParser.questionExample
+        case .unclosedFence:
+            return MarkdownParser.fenceExample
         case .noCards, .notText:
             return MarkdownParser.formatGuide
         case .shortRow:
@@ -96,6 +101,13 @@ enum MarkdownParser {
     - [ ] Mars
     """
 
+    /// A closed code fence, shown when one was left open.
+    static let fenceExample = """
+    ```
+    code goes here
+    ```
+    """
+
     /// The canonical file format, shown when a file has no usable cards.
     static let formatGuide = """
     # Deck Title
@@ -123,6 +135,11 @@ enum MarkdownParser {
                 var j = i + 1
                 while j < lines.count, codeFence(lines[j].trimmingCharacters(in: .whitespaces)) != fence {
                     j += 1
+                }
+                // Running off the end means the fence never closed — say so, rather than
+                // swallowing every card below it in silence.
+                if j == lines.count {
+                    issues.append(ParseIssue(line: i + 1, kind: .unclosedFence, excerpt: line))
                 }
                 i = min(j + 1, lines.count)
                 continue

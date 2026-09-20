@@ -6,6 +6,7 @@ import SwiftUI
 /// Quiz mode is where answers are judged.
 struct CardDeckView: View {
     @Environment(FlagStore.self) private var flags
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onClose: () -> Void
 
     /// Shuffled once, on entry. The library re-scans on every foreground, so holding the
@@ -13,6 +14,10 @@ struct CardDeckView: View {
     @State private var deck: [Card]
     @State private var visible: Int?
     @State private var flagging = false
+    /// Which cards are face-up, by card identity. Held here rather than inside `FlipCard`
+    /// because the feed identifies rows by position: after a shuffle the view in a given
+    /// slot is reused, and per-view state would land on a different card.
+    @State private var flipped: Set<Card.ID> = []
 
     init(cards: [Card], onClose: @escaping () -> Void) {
         _deck = State(initialValue: cards.shuffled())
@@ -56,7 +61,16 @@ struct CardDeckView: View {
     private func shuffle() {
         Haptics.thud()
         deck.shuffle()
+        flipped.removeAll()
         visible = 0
+    }
+
+    private func toggleFlip(_ card: Card) {
+        Haptics.knock()
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.22)
+                                   : .spring(response: 0.46, dampingFraction: 0.68)) {
+            if flipped.contains(card.id) { flipped.remove(card.id) } else { flipped.insert(card.id) }
+        }
     }
 
     /// One card per screenful, snapping like a reel. Scrolling is the one place a swipe
@@ -67,7 +81,9 @@ struct CardDeckView: View {
                 ForEach(Array(deck.enumerated()), id: \.offset) { index, card in
                     // Held to a playing card's proportions rather than filling the page, so
                     // there is always table around it.
-                    FlipCard(card: card)
+                    FlipCard(card: card, isFlipped: flipped.contains(card.id)) {
+                        toggleFlip(card)
+                    }
                         .aspectRatio(0.72, contentMode: .fit)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.horizontal, 20)
@@ -113,27 +129,23 @@ struct CardDeckView: View {
 /// 3D rotation from reading as a page turning.
 private struct FlipCard: View {
     let card: Card
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var progress: Double = 0
+    let isFlipped: Bool
+    let onTap: () -> Void
 
     var body: some View {
-        Button {
-            Haptics.knock()
-            withAnimation(reduceMotion ? .easeInOut(duration: 0.22)
-                                       : .spring(response: 0.46, dampingFraction: 0.68)) {
-                progress = progress < 0.5 ? 1 : 0
-            }
-        } label: {
-            Flipper(progress: reduceMotion ? progress.rounded() : progress) {
+        Button(action: onTap) {
+            // The caller animates `isFlipped`; `Flipper` is animatable on this number, so
+            // it still gets every value in between.
+            Flipper(progress: isFlipped ? 1 : 0) {
                 face(card.prompt, index: "Q", tint: Brand.chips, hint: "Tap to reveal")
             } back: {
                 face(card.answer, index: "A", tint: Brand.gold, hint: "Answer")
             }
         }
         .buttonStyle(.plain)
-        .breathing(progress < 0.5 ? 1 : 0.6, period: 3.1)
+        .breathing(isFlipped ? 0.6 : 1, period: 3.1)
         .accessibilityElement()
-        .accessibilityLabel(progress < 0.5 ? card.prompt : card.answer)
+        .accessibilityLabel(isFlipped ? card.answer : card.prompt)
         .accessibilityHint("Tap to turn the card over")
     }
 

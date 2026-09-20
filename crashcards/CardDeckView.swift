@@ -14,6 +14,10 @@ struct CardDeckView: View {
     @State private var deck: [Card]
     @State private var visible: Int?
     @State private var flagging = false
+    /// Which cards are face-up, by card identity. Held here rather than inside `FlipCard`
+    /// because the feed identifies rows by position: after a shuffle the view at a given
+    /// slot is reused, and per-view state would carry over onto a different card.
+    @State private var flipped: Set<Card.ID> = []
 
     init(cards: [Card]) {
         _deck = State(initialValue: cards.shuffled())
@@ -49,6 +53,7 @@ struct CardDeckView: View {
     private func shuffle() {
         Haptics.knock()
         deck.shuffle()
+        flipped.removeAll()
         visible = 0
     }
 
@@ -57,7 +62,8 @@ struct CardDeckView: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(Array(deck.enumerated()), id: \.offset) { index, card in
-                    FlipCard(card: card, reduceMotion: reduceMotion)
+                    FlipCard(card: card, reduceMotion: reduceMotion,
+                             isFlipped: flipped.contains(card.id)) { toggleFlip(card) }
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
                         .containerRelativeFrame(.vertical)
@@ -74,6 +80,11 @@ struct CardDeckView: View {
         .scrollPosition(id: $visible)
         .scrollIndicators(.hidden)
         .onChange(of: visible) { _, _ in Haptics.tap() }
+    }
+
+    private func toggleFlip(_ card: Card) {
+        Haptics.knock()
+        if flipped.contains(card.id) { flipped.remove(card.id) } else { flipped.insert(card.id) }
     }
 
     private var header: some View {
@@ -99,28 +110,26 @@ struct CardDeckView: View {
 private struct FlipCard: View {
     let card: Card
     let reduceMotion: Bool
-    @State private var flipped = false
+    let isFlipped: Bool
+    let toggle: () -> Void
 
     var body: some View {
         ZStack {
             face(card.prompt, muted: false)
-                .opacity(flipped ? 0 : 1)
+                .opacity(isFlipped ? 0 : 1)
             face(card.answer, muted: true)
                 .rotation3DEffect(.degrees(reduceMotion ? 0 : 180), axis: (x: 1, y: 0, z: 0))
-                .opacity(flipped ? 1 : 0)
+                .opacity(isFlipped ? 1 : 0)
         }
-        .rotation3DEffect(.degrees(flipped && !reduceMotion ? 180 : 0),
+        .rotation3DEffect(.degrees(isFlipped && !reduceMotion ? 180 : 0),
                           axis: (x: 1, y: 0, z: 0), perspective: 0.35)
         .animation(reduceMotion ? .easeInOut(duration: 0.2)
                                 : .spring(response: 0.45, dampingFraction: 0.78),
-                   value: flipped)
+                   value: isFlipped)
         .contentShape(Rectangle())
-        .onTapGesture {
-            flipped.toggle()
-            Haptics.knock()
-        }
+        .onTapGesture { toggle() }
         .accessibilityElement()
-        .accessibilityLabel(flipped ? card.answer : card.prompt)
+        .accessibilityLabel(isFlipped ? card.answer : card.prompt)
         .accessibilityHint("Tap to turn the card over")
     }
 

@@ -17,6 +17,8 @@ enum LocalLibrary {
         try FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
         ).filter { SetFile.canRead($0) }
+        // Flagged.md lands here when no folder is attached; it is app state, not a deck.
+        .filter { $0.lastPathComponent.caseInsensitiveCompare(FlagStore.filename) != .orderedSame }
     }
 
     /// Save a new set, never overwriting: a clashing name gets a numbered suffix.

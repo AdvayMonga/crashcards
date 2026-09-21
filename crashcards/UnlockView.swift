@@ -1,7 +1,13 @@
 import SwiftUI
 
 /// Gate in front of blocked apps: answer questions until enough are right, then the shield
-/// lifts for the grace window. Cards are drawn at random and keep coming until you're done.
+/// lifts for the grace window.
+///
+/// It's staged as one card being turned over. The lock card lands first — that's the block
+/// itself, and it arrives hard. Each answer turns the card to the next question, and the
+/// turn that clears the gate lands on the joker: the thing you were trying to get to. The
+/// two faces are the two cards on the app icon, so the picture is continuous from the home
+/// screen to the shield to here.
 struct UnlockView: View {
     let cards: [Card]
     let manager: ScreenTimeManager
@@ -10,39 +16,158 @@ struct UnlockView: View {
     let onClose: () -> Void
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var question: Question?
+    /// What the card is showing, in the order it was turned to. Index 0 is always the lock.
+    private enum Face {
+        case lock
+        case question(Question)
+        case joker
+    }
+
+    @State private var faces: [Face] = [.lock]
+    @State private var showing = 0
+    @State private var turn: Double = 0
+    /// The lock card's arrival: it drops in oversized and settles.
+    @State private var landing: CGFloat = 1
     @State private var picked: Choice?
     @State private var correct = 0
-    @State private var unlocked = false
     @State private var returnFailed = false
     @State private var misses = 0
 
     private var needed: Int { ScreenTimeManager.questionsToUnlock }
+    private var unlocked: Bool {
+        if case .joker = faces[showing] { return true }
+        return false
+    }
 
     var body: some View {
         ZStack {
             TableBackground()
 
-            Group {
-                if unlocked {
-                    success
-                } else if let question {
-                    quiz(question)
-                } else {
-                    EmptyState(glyph: .question,
-                               title: "No questions available",
-                               message: "Add cards to your flashcards folder first.") {
-                        Button("Close") { onClose() }
-                            .buttonStyle(.soft)
-                    }
+            if answerable.isEmpty {
+                EmptyState(glyph: .question,
+                           title: "No questions available",
+                           message: "Add cards to your flashcards folder first.") {
+                    Button("Close") { onClose() }
+                        .buttonStyle(.soft)
                 }
+            } else {
+                gate
             }
-            .shake(on: misses)
         }
         .safeAreaInset(edge: .top) { header }
-        .animation(Motion.deal, value: unlocked)
-        .onAppear { if question == nil { question = makeQuestion() } }
+        .task { await land() }
+    }
+
+    // MARK: - The gate
+
+    private var gate: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                ProgressTrack(value: correct, total: needed,
+                              label: "\(correct) of \(needed) correct")
+                Text(unlocked ? "Unlocked for \(ScreenTimeManager.unlockMinutes) minutes"
+                              : "\(correct) of \(needed) correct")
+                    .font(.brandCaption)
+                    .foregroundStyle(unlocked ? Brand.green : Brand.inkDim)
+            }
+
+            CardFlipper(turn: turn) { index in
+                face(faces[min(index, faces.count - 1)])
+            }
+            .aspectRatio(0.72, contentMode: .fit)
+            .frame(maxHeight: .infinity)
+            .scaleEffect(landing)
+            .shake(on: misses)
+
+            controls
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 24)
+        .animation(Motion.settle, value: correct)
+    }
+
+    @ViewBuilder
+    private func face(_ face: Face) -> some View {
+        switch face {
+        case .lock:
+            CardFace {
+                VStack(spacing: 18) {
+                    Image("LockFigure")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(.horizontal, 86)
+                    Text("Blocked")
+                        .font(.pixel(24))
+                        .foregroundStyle(Brand.cardInk.opacity(0.65))
+                }
+                .padding(.vertical, 40)
+            }
+        case .question(let question):
+            CardFace(tint: Brand.chips) {
+                Text(question.prompt)
+                    .font(.brandCard)
+                    .foregroundStyle(Brand.cardInk)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.55)
+                    .padding(.horizontal, 30)
+                CardIndex(text: "?", tint: Brand.chips)
+            }
+        case .joker:
+            CardFace {
+                VStack(spacing: 18) {
+                    Image("JokerFigure")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(.horizontal, 62)
+                    Text("Yours")
+                        .font(.pixel(24))
+                        .foregroundStyle(Brand.cardInk.opacity(0.65))
+                }
+                .padding(.vertical, 34)
+            }
+        }
+    }
+
+    @ViewBuilder private var controls: some View {
+        switch faces[showing] {
+        case .lock:
+            Text("Turning it over…")
+                .font(.brandCaption)
+                .foregroundStyle(Brand.inkFaint)
+                .frame(height: 52)
+
+        case .question(let question):
+            VStack(spacing: 12) {
+                ForEach(question.choices) { choice in
+                    choiceRow(choice)
+                }
+            }
+            .transition(.opacity)
+
+        case .joker:
+            VStack(spacing: 12) {
+                if returnFailed {
+                    Text("\(target?.name ?? "That app") didn't open. Check its link in Focus, or switch to it yourself.")
+                        .font(.reading(14))
+                        .foregroundStyle(Brand.mult)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let target {
+                    Button("Open \(target.name)") { goToTarget(target) }
+                        .buttonStyle(.solid(Brand.green))
+                    Button("Stay here") { onClose() }
+                        .buttonStyle(.soft)
+                } else {
+                    Button("Done") { onClose() }
+                        .buttonStyle(.solid(Brand.green))
+                }
+            }
+            .transition(.opacity)
+        }
     }
 
     private var header: some View {
@@ -60,93 +185,6 @@ struct UnlockView: View {
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 8)
-    }
-
-    private func quiz(_ question: Question) -> some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 8) {
-                ProgressTrack(value: correct, total: needed,
-                              label: "\(correct) of \(needed) correct")
-                Text("\(correct) of \(needed) correct")
-                    .font(.brandCaption)
-                    .foregroundStyle(Brand.inkDim)
-            }
-
-            Text(question.prompt)
-                .font(.brandCard)
-                .foregroundStyle(Brand.cardInk)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.6)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 22)
-                .padding(.vertical, 30)
-                .background {
-                    RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                        .fill(Brand.cardFace)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                                .strokeBorder(Brand.outline, lineWidth: 3))
-                        .shadow(color: .black.opacity(0.45), radius: 14, y: 10)
-                }
-                .breathing(0.7, period: 3.3)
-                .id(question.cardID)
-                .transition(.dealtCard)
-
-            Spacer(minLength: 8)
-
-            VStack(spacing: 12) {
-                ForEach(question.choices) { choice in
-                    choiceRow(choice)
-                }
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 24)
-        .animation(Motion.deal, value: question.cardID)
-    }
-
-    private var success: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            PixelIcon(glyph: .lockOpen, size: 60, color: Brand.green)
-                .padding(24)
-                .slab(Brand.surfaceHigh, radius: Brand.cardRadius)
-                .breathing(1.4, period: 3.0)
-
-            Text("Unlocked for \(ScreenTimeManager.unlockMinutes) minutes")
-                .font(.brandTitle)
-                .foregroundStyle(Brand.ink)
-                .multilineTextAlignment(.center)
-
-            Text(returnFailed
-                 ? "\(target?.name ?? "That app") didn't open. Check its link in Focus, or switch to it yourself."
-                 : "Your apps re-block automatically when the time is up.")
-                .font(.reading(15))
-                .foregroundStyle(returnFailed ? Brand.mult : Brand.inkDim)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer()
-
-            if let target {
-                Button("Open \(target.name)") { goToTarget(target) }
-                    .buttonStyle(.solid(Brand.green))
-                Button("Stay here") { onClose() }
-                    .buttonStyle(.soft)
-            } else {
-                Button("Done") { onClose() }
-                    .buttonStyle(.solid(Brand.green))
-            }
-        }
-        .padding(.horizontal, 26)
-        .padding(.bottom, 26)
-    }
-
-    /// Hand you back to the app you were opening.
-    private func goToTarget(_ app: GatedApp) {
-        guard let url = app.returnURL else { returnFailed = true; return }
-        GatedApps.recordRedirect(to: app)
-        openURL(url) { opened in returnFailed = !opened }
     }
 
     private func choiceRow(_ choice: Choice) -> some View {
@@ -183,7 +221,38 @@ struct UnlockView: View {
         return choice == picked ? Brand.mult : nil
     }
 
-    /// Score the tap, show the result briefly, then advance — or unlock once we hit the target.
+    // MARK: - Staging
+
+    /// The block landing: the lock card drops in oversized, settles, and turns itself over
+    /// to the first question. Reduce Motion gets the question without the theatre.
+    private func land() async {
+        guard !faces.isEmpty, answerable.isEmpty == false else { return }
+        guard !reduceMotion else {
+            deal(makeQuestion().map(Face.question) ?? .joker)
+            return
+        }
+
+        landing = 1.3
+        Haptics.thud()
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.52)) { landing = 1 }
+        misses += 1   // one shake, so the block reads as an impact
+
+        try? await Task.sleep(for: .seconds(0.75))
+        deal(makeQuestion().map(Face.question) ?? .joker)
+    }
+
+    /// Turn the card to a new face.
+    private func deal(_ next: Face) {
+        faces.append(next)
+        let index = faces.count - 1
+        showing = index
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.22)
+                                   : .spring(response: 0.5, dampingFraction: 0.72)) {
+            turn = Double(index)
+        }
+    }
+
+    /// Score the tap, let the colour land, then turn to whatever comes next.
     private func answer(_ choice: Choice) {
         guard picked == nil else { return }
         picked = choice
@@ -194,17 +263,28 @@ struct UnlockView: View {
             Haptics.wrong()
             misses += 1
         }
-        Task {
+
+        Task { @MainActor in
             try? await Task.sleep(for: .seconds(0.7))
+            picked = nil
             if correct >= needed {
                 manager.unlock()
-                unlocked = true
+                Haptics.thud()
+                deal(.joker)
                 if let target { goToTarget(target) }
+            } else if let question = makeQuestion() {
+                deal(.question(question))
             } else {
-                question = makeQuestion()
-                picked = nil
+                deal(.joker)
             }
         }
+    }
+
+    /// Hand you back to the app you were opening.
+    private func goToTarget(_ app: GatedApp) {
+        guard let url = app.returnURL else { returnFailed = true; return }
+        GatedApps.recordRedirect(to: app)
+        openURL(url) { opened in returnFailed = !opened }
     }
 
     // MARK: - Question building
@@ -225,11 +305,19 @@ struct UnlockView: View {
         }
     }
 
+    /// The card the last question came from, so the next one can avoid repeating it.
+    private var lastAsked: Card.ID? {
+        for face in faces.reversed() {
+            if case .question(let question) = face { return question.cardID }
+        }
+        return nil
+    }
+
     private func makeQuestion() -> Question? {
         let pool = answerable
         guard !pool.isEmpty else { return nil }
         // Avoid repeating the card just asked, unless it's the only one.
-        let candidates = pool.count > 1 ? pool.filter { $0.id != question?.cardID } : pool
+        let candidates = pool.count > 1 ? pool.filter { $0.id != lastAsked } : pool
         guard let card = candidates.randomElement() else { return nil }
 
         switch card.content {

@@ -491,6 +491,88 @@ struct CrashField: View {
     }
 }
 
+// MARK: - Cards
+
+/// A playing card: cream stock, a near-black edge, an inner frame line in the suit's colour,
+/// and a shadow that belongs to the stock rather than to what's printed on it.
+///
+/// Every card in the app comes through here — a flashcard, a quiz question, and the two
+/// faces the unlock gate turns over — so a card is one object wherever you meet it.
+struct CardFace<Content: View>: View {
+    var tint: Color = Brand.gold
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
+                .fill(Brand.cardFace)
+                .shadow(color: .black.opacity(0.5), radius: 16, y: 12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Brand.cardRadius - 6, style: .continuous)
+                        .strokeBorder(tint.opacity(0.45), lineWidth: 2)
+                        .padding(9))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
+                        .strokeBorder(Brand.outline, lineWidth: 3))
+            content
+        }
+    }
+}
+
+/// The rank in a card's corner, printed in both opposite corners the way a real one is.
+struct CardIndex: View {
+    let text: String
+    var tint: Color = Brand.gold
+
+    var body: some View {
+        VStack {
+            HStack {
+                mark
+                Spacer()
+            }
+            Spacer()
+            HStack {
+                Spacer()
+                mark.rotationEffect(.degrees(180))
+            }
+        }
+        .padding(16)
+    }
+
+    private var mark: some View {
+        Text(text).font(.pixel(30)).foregroundStyle(tint)
+    }
+}
+
+/// Turns a stack of faces over, one half-turn at a time.
+///
+/// `turn` counts half-turns: 0 shows face 0, 1 shows face 1, and the card is edge-on at
+/// every half. Driving it from a single number is what lets the card do more than rotate —
+/// it lunges towards you as it passes edge-on, which is what stops a 3D rotation from
+/// reading as a page turning.
+struct CardFlipper<Face: View>: View, Animatable {
+    var turn: Double
+    @ViewBuilder var face: (Int) -> Face
+
+    var animatableData: Double {
+        get { turn }
+        set { turn = newValue }
+    }
+
+    var body: some View {
+        let index = max(0, Int(turn.rounded()))
+        let lunge = abs(sin(min(max(turn, 0), .greatestFiniteMagnitude) * .pi))
+
+        face(index)
+            // An odd half-turn lands the card mirrored; undo that on the content alone.
+            .rotation3DEffect(.degrees(index.isMultiple(of: 2) ? 0 : 180),
+                              axis: (x: 0, y: 1, z: 0))
+            .rotation3DEffect(.degrees(turn * 180), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+            .scaleEffect(1 + 0.09 * lunge)
+            .offset(y: -14 * lunge)
+    }
+}
+
 // MARK: - Readouts
 
 /// A chunky progress bar. Outlined like everything else, and filled in gold.

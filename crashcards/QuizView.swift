@@ -49,23 +49,18 @@ struct QuizView: View {
     private func question(_ card: Card) -> some View {
         VStack(spacing: 22) {
             Spacer(minLength: 0)
-            Text(card.prompt)
-                .font(.brandCard)
-                .foregroundStyle(Brand.cardInk)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.6)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 34)
-                .background {
-                    RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                        .fill(Brand.cardFace)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                                .strokeBorder(Brand.outline, lineWidth: 3))
-                        .shadow(color: .black.opacity(0.45), radius: 14, y: 10)
-                }
-                .breathing(0.7, period: 3.3)
+            CardFace(tint: Brand.chips) {
+                Text(card.prompt)
+                    .font(.brandCard)
+                    .foregroundStyle(Brand.cardInk)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.6)
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 34)
+                CardIndex(text: "?", tint: Brand.chips)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .breathing(0.7, period: 3.3)
 
             Spacer(minLength: 0)
 

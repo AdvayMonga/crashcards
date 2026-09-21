@@ -13,7 +13,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         ShieldConfiguration(
             backgroundBlurStyle: .dark,
             backgroundColor: Table.deep.withAlphaComponent(0.94),
-            icon: jokerCard,
+            icon: blockedCards,
             title: .init(text: "The joker's locked", color: Table.ink),
             subtitle: .init(text: "Open Crash Cards and answer \(questionCount) questions to unlock this app for \(unlockMinutes) minutes.",
                             color: Table.inkDim),
@@ -22,9 +22,9 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         )
     }
 
-    /// `alwaysOriginal` so the shield can't flatten the card into a tint.
-    private var jokerCard: UIImage? {
-        UIImage(named: "JokerCard")?.withRenderingMode(.alwaysOriginal)
+    /// `alwaysOriginal` so the shield can't flatten the cards into a tint.
+    private var blockedCards: UIImage? {
+        UIImage(named: "BlockedCards")?.withRenderingMode(.alwaysOriginal)
     }
 
     /// Kept in sync with `Brand`; an extension can't import the app target.

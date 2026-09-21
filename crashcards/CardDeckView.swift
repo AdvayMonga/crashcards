@@ -122,11 +122,9 @@ struct CardDeckView: View {
     }
 }
 
-/// A playing card with two faces that turns over when tapped.
-///
-/// The flip is driven by one number so the card can do more than rotate on the way round:
-/// it lunges towards you at the halfway point and settles back, which is what stops a
-/// 3D rotation from reading as a page turning.
+/// A playing card with two faces that turns over when tapped. Stock, edge and corner rank
+/// come from `CardFace` and `CardFlipper` — the same ones the quiz and the unlock gate use,
+/// so a card is one object wherever you meet it.
 private struct FlipCard: View {
     let card: Card
     let isFlipped: Bool
@@ -134,12 +132,14 @@ private struct FlipCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            // The caller animates `isFlipped`; `Flipper` is animatable on this number, so
-            // it still gets every value in between.
-            Flipper(progress: isFlipped ? 1 : 0) {
-                face(card.prompt, index: "Q", tint: Brand.chips, hint: "Tap to reveal")
-            } back: {
-                face(card.answer, index: "A", tint: Brand.gold, hint: "Answer")
+            // The caller animates `isFlipped`; `CardFlipper` is animatable on this number,
+            // so it still gets every value in between.
+            CardFlipper(turn: isFlipped ? 1 : 0) { index in
+                if index == 0 {
+                    face(card.prompt, rank: "Q", tint: Brand.chips, hint: "Tap to reveal")
+                } else {
+                    face(card.answer, rank: "A", tint: Brand.gold, hint: "Answer")
+                }
             }
         }
         .buttonStyle(.plain)
@@ -149,23 +149,8 @@ private struct FlipCard: View {
         .accessibilityHint("Tap to turn the card over")
     }
 
-    /// Cream stock, black edge, an inner frame line and a rank in two corners — the things
-    /// that make a rectangle read as a playing card rather than a panel.
-    private func face(_ text: String, index: String, tint: Color, hint: String) -> some View {
-        ZStack {
-            // The shadow belongs to the stock, not to what's printed on it — put it on the
-            // whole stack and the card's own text gets a blurry halo.
-            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                .fill(Brand.cardFace)
-                .shadow(color: .black.opacity(0.5), radius: 16, y: 12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Brand.cardRadius - 6, style: .continuous)
-                        .strokeBorder(tint.opacity(0.45), lineWidth: 2)
-                        .padding(9))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                        .strokeBorder(Brand.outline, lineWidth: 3))
-
+    private func face(_ text: String, rank: String, tint: Color, hint: String) -> some View {
+        CardFace(tint: tint) {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 Text(text)
@@ -180,57 +165,8 @@ private struct FlipCard: View {
                     .foregroundStyle(Brand.cardInk.opacity(0.45))
                     .padding(.bottom, 24)
             }
-
-            // The rank, in opposite corners, the second one upside down.
-            VStack {
-                HStack {
-                    rank(index, tint: tint)
-                    Spacer()
-                }
-                Spacer()
-                HStack {
-                    Spacer()
-                    rank(index, tint: tint).rotationEffect(.degrees(180))
-                }
-            }
-            .padding(16)
+            CardIndex(text: rank, tint: tint)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func rank(_ text: String, tint: Color) -> some View {
-        Text(text)
-            .font(.pixel(28))
-            .foregroundStyle(tint)
-    }
-}
-
-/// Turns one view into another around the vertical axis. `progress` runs 0 → 1; the body is
-/// re-evaluated at every interpolated value, which is what lets the lunge track the rotation.
-private struct Flipper<Front: View, Back: View>: View, Animatable {
-    var progress: Double
-    @ViewBuilder var front: Front
-    @ViewBuilder var back: Back
-
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    var body: some View {
-        // Peaks at the halfway point, where the card is edge-on and nothing else is visible.
-        let lunge = sin(min(max(progress, 0), 1) * .pi)
-        let showingBack = progress > 0.5
-
-        ZStack {
-            front.opacity(showingBack ? 0 : 1)
-            back
-                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
-                .opacity(showingBack ? 1 : 0)
-        }
-        .rotation3DEffect(.degrees(progress * 180), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
-        .scaleEffect(1 + 0.09 * lunge)
-        .offset(y: -14 * lunge)
     }
 }
 

@@ -29,6 +29,47 @@ enum LocalLibrary {
         return url
     }
 
+    /// Delete a set the app owns.
+    static func delete(_ url: URL) throws {
+        try FileManager.default.removeItem(at: url)
+    }
+
+    /// Rename a set: retitle its heading and move it to a matching filename.
+    ///
+    /// Both halves matter — the displayed title comes from the `# Heading` when there is
+    /// one and from the filename otherwise, so changing only one of them would leave the
+    /// name looking unchanged.
+    @discardableResult
+    static func rename(_ url: URL, to newTitle: String) throws -> URL {
+        let body = retitled(try String(contentsOf: url, encoding: .utf8), to: newTitle)
+        let base = SetFile.filename(from: newTitle)
+        var destination = directory.appendingPathComponent("\(base).md")
+        var n = 2
+        while destination != url, FileManager.default.fileExists(atPath: destination.path) {
+            destination = directory.appendingPathComponent("\(base) \(n).md")
+            n += 1
+        }
+        try body.write(to: destination, atomically: true, encoding: .utf8)
+        if destination != url { try FileManager.default.removeItem(at: url) }
+        return destination
+    }
+
+    /// Replace the first ATX heading, or add one when the file has none. These are files
+    /// the app wrote itself, so there is no frontmatter to step around.
+    private static func retitled(_ text: String, to title: String) -> String {
+        var lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        guard let i = lines.firstIndex(where: {
+            let line = $0.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("#") else { return false }
+            let rest = line.drop { $0 == "#" }
+            return rest.isEmpty || rest.first == " "
+        }) else {
+            return "# \(title)\n\n" + text
+        }
+        lines[i] = "# \(title)"
+        return lines.joined(separator: "\n")
+    }
+
     /// A filename derived from the title, with a numbered suffix if it's taken.
     private static func uniqueURL(for title: String) -> URL {
         let base = SetFile.filename(from: title)
@@ -78,5 +119,16 @@ enum SetFile {
             return DelimitedParser.parse(text, filename: filename)
         }
         return MarkdownParser.parse(text, filename: filename)
+    }
+}
+
+
+extension FlashcardSet {
+    /// Sets in the app's own library — the only ones it may rename or delete. A file in a
+    /// folder you attached is yours, and the app never edits those.
+    var isLocal: Bool {
+        guard let fileURL else { return false }
+        let home = LocalLibrary.directory.standardizedFileURL.path
+        return fileURL.standardizedFileURL.path.hasPrefix(home.hasSuffix("/") ? home : home + "/")
     }
 }

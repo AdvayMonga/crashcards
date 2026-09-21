@@ -1,23 +1,37 @@
 import AppKit
 import CoreGraphics
-import CoreText
 import ImageIO
 import UniformTypeIdentifiers
 
-// Crash Cards icon: the ace of locks.
+// Crash Cards artwork: the joker, locked.
 //
-// A single playing card on the felt table, drawn in the app's own language — cream stock,
-// near-black edge, a gold inner frame, standing on its own ledge. The suit is a padlock,
-// which is the app in one shape: cards are what stands in front of your apps.
+// The joker is everything you'd rather be doing — the wild card, the distraction. The suit
+// is a padlock, sitting in the corners where a rank and pip belong. Put together: the fun
+// is behind a lock, and the cards are the way through.
 //
-// Run from the repo root:  swift Tools/make-icon.swift <out.png>
+// Drawn in the app's own language — cream stock, near-black edge, gold inner frame, standing
+// on its own ledge. Two outputs from one drawing:
+//
+//   swift Tools/make-icon.swift icon   <out.png>   1024 app icon, opaque, on the felt table
+//   swift Tools/make-icon.swift shield <out.png>   the card alone, transparent, for the
+//                                                  Screen Time block screen
+//
+// Run from the repo root.
 
-let outPath = CommandLine.arguments[1]
-let fontPath = CommandLine.arguments.count > 2
-    ? CommandLine.arguments[2]
-    : "crashcards/Fonts/PixelifySans-Bold.ttf"
+let mode = CommandLine.arguments[1]
+let outPath = CommandLine.arguments[2]
+precondition(mode == "icon" || mode == "shield", "mode must be icon or shield")
 
-let size = 1024.0
+/// Everything below is laid out in a 1024-wide space; the context scales it to fit.
+let space1024 = 1024.0
+let onTable = mode == "icon"
+/// How much of that space each output frames, and how many pixels it gets. The app icon is
+/// square by rule; the block screen crops to the card, so it gets a card-shaped frame.
+let framedWidth = onTable ? space1024 : 566.0
+let framedHeight = onTable ? space1024 : 724.0
+// The shield art ships as a @3x asset, so these pixels are three per point.
+let pixelWidth = onTable ? 1024.0 : 480.0
+let pixelHeight = onTable ? 1024.0 : 614.0
 
 // The app's palette, from Brand.
 let tableDeep = NSColor(srgbRed: 0x16 / 255, green: 0x22 / 255, blue: 0x2C / 255, alpha: 1)
@@ -25,70 +39,82 @@ let tableLift = NSColor(srgbRed: 0x2B / 255, green: 0x42 / 255, blue: 0x54 / 255
 let cardFace = NSColor(srgbRed: 0xF4 / 255, green: 0xEF / 255, blue: 0xE2 / 255, alpha: 1)
 let outline = NSColor(srgbRed: 0x0E / 255, green: 0x15 / 255, blue: 0x19 / 255, alpha: 1)
 let gold = NSColor(srgbRed: 0xF0 / 255, green: 0xC0 / 255, blue: 0x40 / 255, alpha: 1)
+let mult = NSColor(srgbRed: 0xFE / 255, green: 0x5F / 255, blue: 0x55 / 255, alpha: 1)
 
-// An opaque context: App Store icons must carry no alpha channel at all.
+// The app icon must be fully opaque; the shield draws over the system's own background,
+// so that one keeps its alpha.
 let space = CGColorSpaceCreateDeviceRGB()
 let ctx = CGContext(
-    data: nil, width: Int(size), height: Int(size), bitsPerComponent: 8, bytesPerRow: 0,
-    space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+    data: nil, width: Int(pixelWidth), height: Int(pixelHeight), bitsPerComponent: 8,
+    bytesPerRow: 0, space: space,
+    bitmapInfo: (onTable ? CGImageAlphaInfo.noneSkipLast : .premultipliedLast).rawValue
 )!
 
-/// The app's display face, read straight from the bundled file so the rank matches the UI.
-let pixelFont: CTFont = {
-    guard let provider = CGDataProvider(url: URL(fileURLWithPath: fontPath) as CFURL),
-          let cgFont = CGFont(provider)
-    else { fatalError("couldn't read the pixel font at \(fontPath)") }
-    return CTFontCreateWithGraphicsFont(cgFont, 128, nil, nil)
-}()
+ctx.scaleBy(x: pixelWidth / framedWidth, y: pixelHeight / framedHeight)
+ctx.translateBy(x: (framedWidth - space1024) / 2, y: (framedHeight - space1024) / 2)
 
 // MARK: - The table
 
-ctx.setFillColor(tableDeep.cgColor)
-ctx.fill(CGRect(x: 0, y: 0, width: size, height: size))
+if onTable {
+    ctx.setFillColor(tableDeep.cgColor)
+    ctx.fill(CGRect(x: 0, y: 0, width: space1024, height: space1024))
 
-/// One of the broad diagonal sweeps the app's background drifts through, frozen in place.
-func band(angle: CGFloat, offset: CGFloat, thickness: CGFloat, strength: CGFloat) {
-    ctx.saveGState()
-    ctx.translateBy(x: size / 2, y: size / 2)
-    ctx.rotate(by: angle)
-    ctx.clip(to: CGRect(x: -size, y: offset - thickness / 2, width: size * 2, height: thickness))
-    let sweep = CGGradient(
-        colorsSpace: space,
-        colors: [tableLift.withAlphaComponent(0).cgColor,
-                 tableLift.withAlphaComponent(strength).cgColor,
-                 tableLift.withAlphaComponent(0).cgColor] as CFArray,
-        locations: [0, 0.5, 1])!
-    ctx.drawLinearGradient(sweep,
-                           start: CGPoint(x: 0, y: offset - thickness / 2),
-                           end: CGPoint(x: 0, y: offset + thickness / 2),
-                           options: [])
-    ctx.restoreGState()
+    /// One of the broad diagonal sweeps the app's background drifts through, frozen in place.
+    func band(angle: CGFloat, offset: CGFloat, thickness: CGFloat, strength: CGFloat) {
+        ctx.saveGState()
+        ctx.translateBy(x: space1024 / 2, y: space1024 / 2)
+        ctx.rotate(by: angle)
+        ctx.clip(to: CGRect(x: -space1024, y: offset - thickness / 2,
+                            width: space1024 * 2, height: thickness))
+        let sweep = CGGradient(
+            colorsSpace: space,
+            colors: [tableLift.withAlphaComponent(0).cgColor,
+                     tableLift.withAlphaComponent(strength).cgColor,
+                     tableLift.withAlphaComponent(0).cgColor] as CFArray,
+            locations: [0, 0.5, 1])!
+        ctx.drawLinearGradient(sweep, start: CGPoint(x: 0, y: offset - thickness / 2),
+                               end: CGPoint(x: 0, y: offset + thickness / 2), options: [])
+        ctx.restoreGState()
+    }
+
+    band(angle: -.pi / 6.4, offset: 170, thickness: 660, strength: 1.0)
+    band(angle: -.pi / 4.6, offset: -280, thickness: 460, strength: 0.7)
+
+    // Pulls the eye to the middle and keeps the corners from competing with the card.
+    let vignette = CGGradient(colorsSpace: space,
+                              colors: [tableDeep.withAlphaComponent(0).cgColor,
+                                       tableDeep.withAlphaComponent(0.74).cgColor] as CFArray,
+                              locations: [0, 1])!
+    ctx.drawRadialGradient(vignette,
+                           startCenter: CGPoint(x: space1024 / 2, y: space1024 / 2),
+                           startRadius: 190,
+                           endCenter: CGPoint(x: space1024 / 2, y: space1024 / 2),
+                           endRadius: 760, options: .drawsAfterEndLocation)
 }
-
-band(angle: -.pi / 6.4, offset: 170, thickness: 660, strength: 1.0)
-band(angle: -.pi / 4.6, offset: -280, thickness: 460, strength: 0.7)
-
-// Pulls the eye to the middle and keeps the corners from competing with the card.
-let vignette = CGGradient(colorsSpace: space,
-                          colors: [tableDeep.withAlphaComponent(0).cgColor,
-                                   tableDeep.withAlphaComponent(0.74).cgColor] as CFArray,
-                          locations: [0, 1])!
-ctx.drawRadialGradient(vignette,
-                       startCenter: CGPoint(x: size / 2, y: size / 2), startRadius: 190,
-                       endCenter: CGPoint(x: size / 2, y: size / 2), endRadius: 760,
-                       options: .drawsAfterEndLocation)
 
 // MARK: - Pieces
 
+func fill(_ path: CGPath, _ colour: NSColor, edge: CGFloat = 18) {
+    ctx.addPath(path)
+    ctx.setFillColor(colour.cgColor)
+    ctx.fillPath()
+    if edge > 0 {
+        ctx.addPath(path)
+        ctx.setStrokeColor(outline.cgColor)
+        ctx.setLineWidth(edge)
+        ctx.setLineJoin(.round)
+        ctx.strokePath()
+    }
+}
+
 /// A padlock, centred on the origin of the current space. This is the suit.
-func lock(scale: CGFloat) {
+/// At corner size the keyhole is left off — it only ever resolves as a smudge.
+func lock(scale: CGFloat, keyhole: Bool) {
     ctx.saveGState()
     ctx.scaleBy(x: scale, y: scale)
 
-    // Shackle: straight legs up to a half-circle, stroked twice — a heavy near-black pass
-    // with a thinner gold one centred inside it. The legs run down past the body's top edge
-    // so the body covers where the stroke ends, and the arc clears it far enough to leave a
-    // real opening rather than a slot.
+    // Straight legs up to a half-circle. The legs run down behind the body, so the body
+    // covers the stroke ends and the arc still clears it with a real opening.
     let shackle = CGMutablePath()
     shackle.move(to: CGPoint(x: -64, y: 20))
     shackle.addLine(to: CGPoint(x: -64, y: 70))
@@ -104,54 +130,92 @@ func lock(scale: CGFloat) {
         ctx.strokePath()
     }
 
-    let bodyRect = CGRect(x: -100, y: -122, width: 200, height: 192)
-    let bodyPath = CGPath(roundedRect: bodyRect, cornerWidth: 30, cornerHeight: 30, transform: nil)
-    ctx.addPath(bodyPath)
-    ctx.setFillColor(gold.cgColor)
-    ctx.fillPath()
-    ctx.addPath(bodyPath)
-    ctx.setStrokeColor(outline.cgColor)
-    ctx.setLineWidth(18)
-    ctx.strokePath()
+    fill(CGPath(roundedRect: CGRect(x: -100, y: -122, width: 200, height: 192),
+                cornerWidth: 30, cornerHeight: 30, transform: nil), gold)
 
-    // Keyhole.
-    ctx.setFillColor(outline.cgColor)
-    ctx.fillEllipse(in: CGRect(x: -25, y: -35, width: 50, height: 50))
-    let stem = CGMutablePath()
-    stem.move(to: CGPoint(x: -17, y: -22))
-    stem.addLine(to: CGPoint(x: 17, y: -22))
-    stem.addLine(to: CGPoint(x: 10, y: -90))
-    stem.addLine(to: CGPoint(x: -10, y: -90))
-    stem.closeSubpath()
-    ctx.addPath(stem)
-    ctx.fillPath()
-
+    if keyhole {
+        ctx.setFillColor(outline.cgColor)
+        ctx.fillEllipse(in: CGRect(x: -25, y: -35, width: 50, height: 50))
+        let stem = CGMutablePath()
+        stem.move(to: CGPoint(x: -17, y: -22))
+        stem.addLine(to: CGPoint(x: 17, y: -22))
+        stem.addLine(to: CGPoint(x: 10, y: -90))
+        stem.addLine(to: CGPoint(x: -10, y: -90))
+        stem.closeSubpath()
+        ctx.addPath(stem)
+        ctx.fillPath()
+    }
     ctx.restoreGState()
 }
 
-/// A corner index. Just the rank — a miniature suit beside it turns to grit by 60pt.
-func index(at point: CGPoint, upsideDown: Bool) {
+/// The joker: a grinning head under a three-point cap. Drawn face first so the cap's brim
+/// sits over the top of the head.
+func joker(scale: CGFloat) {
     ctx.saveGState()
-    ctx.translateBy(x: point.x, y: point.y)
-    if upsideDown { ctx.rotate(by: .pi) }
+    ctx.scaleBy(x: scale, y: scale)
 
-    let attributed = NSAttributedString(string: "A", attributes: [
-        .font: pixelFont, .foregroundColor: outline,
-    ])
-    let line = CTLineCreateWithAttributedString(attributed)
-    let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
-    ctx.textPosition = CGPoint(x: -bounds.width / 2, y: -bounds.height / 2)
-    CTLineDraw(line, ctx)
+    // Ruff: a band under the chin with three points hanging off it. Drawn before the head
+    // so the chin overlaps its top edge and the two read as one figure.
+    let ruff = CGMutablePath()
+    ruff.move(to: CGPoint(x: -104, y: -120))
+    ruff.addLine(to: CGPoint(x: -104, y: -156))
+    ruff.addLine(to: CGPoint(x: -69, y: -200))
+    ruff.addLine(to: CGPoint(x: -35, y: -156))
+    ruff.addLine(to: CGPoint(x: 0, y: -200))
+    ruff.addLine(to: CGPoint(x: 35, y: -156))
+    ruff.addLine(to: CGPoint(x: 69, y: -200))
+    ruff.addLine(to: CGPoint(x: 104, y: -156))
+    ruff.addLine(to: CGPoint(x: 104, y: -120))
+    ruff.closeSubpath()
+    fill(ruff, mult, edge: 17)
+
+    // Head.
+    fill(CGPath(ellipseIn: CGRect(x: -86, y: -136, width: 172, height: 172), transform: nil),
+         gold)
+
+    // Eyes.
+    ctx.setFillColor(outline.cgColor)
+    for x in [-36.0, 36.0] {
+        ctx.fillEllipse(in: CGRect(x: x - 15, y: -32, width: 30, height: 34))
+    }
+
+    // Grin: the bottom of a circle, stroked.
+    let grin = CGMutablePath()
+    grin.addArc(center: CGPoint(x: 0, y: -34), radius: 48,
+                startAngle: 200 * .pi / 180, endAngle: 340 * .pi / 180,
+                clockwise: false, transform: .identity)
+    ctx.addPath(grin)
+    ctx.setStrokeColor(outline.cgColor)
+    ctx.setLineWidth(17)
+    ctx.setLineCap(.round)
+    ctx.strokePath()
+
+    // Cap: three drooping points, each with a bell.
+    let cap = CGMutablePath()
+    cap.move(to: CGPoint(x: -92, y: 22))
+    cap.addLine(to: CGPoint(x: -150, y: 84))
+    cap.addLine(to: CGPoint(x: -48, y: 76))
+    cap.addLine(to: CGPoint(x: 0, y: 150))
+    cap.addLine(to: CGPoint(x: 48, y: 76))
+    cap.addLine(to: CGPoint(x: 150, y: 84))
+    cap.addLine(to: CGPoint(x: 92, y: 22))
+    cap.closeSubpath()
+    fill(cap, mult, edge: 17)
+
+    for bell in [CGPoint(x: -150, y: 84), CGPoint(x: 0, y: 152), CGPoint(x: 150, y: 84)] {
+        fill(CGPath(ellipseIn: CGRect(x: bell.x - 24, y: bell.y - 24, width: 48, height: 48),
+                    transform: nil), gold, edge: 15)
+    }
+
     ctx.restoreGState()
 }
 
 // MARK: - The card
 
 let cardWidth = 452.0, cardHeight = 610.0
-let cardCentre = CGPoint(x: size / 2, y: size / 2 - 8)
 
 ctx.saveGState()
-ctx.translateBy(x: cardCentre.x, y: cardCentre.y)
+ctx.translateBy(x: space1024 / 2, y: space1024 / 2 - 8)
 ctx.rotate(by: -.pi / 46)
 
 let rect = CGRect(x: -cardWidth / 2, y: -cardHeight / 2, width: cardWidth, height: cardHeight)
@@ -163,14 +227,8 @@ ctx.addPath(CGPath(roundedRect: rect.offsetBy(dx: 0, dy: -22),
 ctx.setFillColor(outline.cgColor)
 ctx.fillPath()
 
-let cardPath = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
-ctx.addPath(cardPath)
-ctx.setFillColor(cardFace.cgColor)
-ctx.fillPath()
-ctx.addPath(cardPath)
-ctx.setStrokeColor(outline.cgColor)
-ctx.setLineWidth(18)
-ctx.strokePath()
+fill(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil),
+     cardFace)
 
 ctx.addPath(CGPath(roundedRect: rect.insetBy(dx: 30, dy: 30),
                    cornerWidth: radius - 18, cornerHeight: radius - 18, transform: nil))
@@ -178,15 +236,21 @@ ctx.setStrokeColor(gold.withAlphaComponent(0.55).cgColor)
 ctx.setLineWidth(8)
 ctx.strokePath()
 
-// The pip. The lock's own middle sits above its origin, so this offset is what actually
-// centres it on the card rather than leaving it riding high.
+// The joker's own middle sits above its origin, so this offset is what centres it.
 ctx.saveGState()
-ctx.translateBy(x: 0, y: -6)
-lock(scale: 1.22)
+ctx.translateBy(x: 0, y: 14)
+joker(scale: 0.95)
 ctx.restoreGState()
 
-index(at: CGPoint(x: -cardWidth / 2 + 80, y: cardHeight / 2 - 88), upsideDown: false)
-index(at: CGPoint(x: cardWidth / 2 - 80, y: -cardHeight / 2 + 88), upsideDown: true)
+// The suit, in the two corners a rank and pip would occupy. Both upright: a card rotates
+// its indices, but a padlock turned upside down just reads as a broken padlock.
+for corner in [CGPoint(x: -cardWidth / 2 + 74, y: cardHeight / 2 - 86),
+               CGPoint(x: cardWidth / 2 - 74, y: -cardHeight / 2 + 86)] {
+    ctx.saveGState()
+    ctx.translateBy(x: corner.x, y: corner.y)
+    lock(scale: 0.30, keyhole: false)
+    ctx.restoreGState()
+}
 
 ctx.restoreGState()
 

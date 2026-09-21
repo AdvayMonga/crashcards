@@ -212,6 +212,19 @@ extension PixelGlyph {
         "..##.....",
         ".........")
 
+    /// The joker: the app's sign for something blocked. A grinning head under a cap,
+    /// which at nine pixels square is as much face as there is room for.
+    static let joker = PixelGlyph(
+        "..#.#.#..",
+        "..#####..",
+        ".#######.",
+        ".#######.",
+        ".##.#.##.",
+        ".#######.",
+        ".#.....#.",
+        ".##...##.",
+        "..#####..")
+
     static let shuffle = PixelGlyph(
         ".........",
         ".##....##",

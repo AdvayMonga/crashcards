@@ -176,8 +176,10 @@ struct FocusView: View {
         }
     }
 
+    /// Blocked shows the joker, not a padlock: the point isn't that something is locked,
+    /// it's *what* is locked. The same card is on the block screen and the app icon.
     private var statusGlyph: PixelGlyph {
-        manager.isShieldActive ? .lockClosed : .lockOpen
+        manager.isShieldActive ? .joker : .lockOpen
     }
     private var statusColor: Color {
         if manager.isShieldActive { return Brand.gold }

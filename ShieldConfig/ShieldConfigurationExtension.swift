@@ -4,18 +4,27 @@ import UIKit
 
 /// Customizes the system block screen. Only these fields are ours — the shield itself is
 /// system-rendered, so the questions live in the app, not here.
+///
+/// The joker is the app's sign for a blocked thing: the card you'd rather be playing, face
+/// up, with the suit locked in its corners. It's the same card the app icon carries and the
+/// same one the Focus tab shows while the shield is up.
 class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     private var shield: ShieldConfiguration {
         ShieldConfiguration(
             backgroundBlurStyle: .dark,
             backgroundColor: Table.deep.withAlphaComponent(0.94),
-            icon: UIImage(systemName: "rectangle.on.rectangle.angled"),
-            title: .init(text: "Blocked", color: Table.ink),
+            icon: jokerCard,
+            title: .init(text: "The joker's locked", color: Table.ink),
             subtitle: .init(text: "Open Crash Cards and answer \(questionCount) questions to unlock this app for \(unlockMinutes) minutes.",
                             color: Table.inkDim),
             primaryButtonLabel: .init(text: "OK", color: Table.outline),
             primaryButtonBackgroundColor: Table.gold
         )
+    }
+
+    /// `alwaysOriginal` so the shield can't flatten the card into a tint.
+    private var jokerCard: UIImage? {
+        UIImage(named: "JokerCard")?.withRenderingMode(.alwaysOriginal)
     }
 
     /// Kept in sync with `Brand`; an extension can't import the app target.

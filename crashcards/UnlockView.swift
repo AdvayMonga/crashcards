@@ -3,11 +3,11 @@ import SwiftUI
 /// Gate in front of blocked apps: answer questions until enough are right, then the shield
 /// lifts for the grace window.
 ///
-/// It's staged as one card being turned over. The lock card lands first — that's the block
-/// itself, and it arrives hard. Each answer turns the card to the next question, and the
-/// turn that clears the gate lands on the joker: the thing you were trying to get to. The
-/// two faces are the two cards on the app icon, so the picture is continuous from the home
-/// screen to the shield to here.
+/// It's staged as one card being turned over. The masked joker lands first — a tragedy mask
+/// over the face you were after, which is what being blocked is — and it arrives hard. Each
+/// answer turns the card to the next question, and the turn that clears the gate takes the
+/// mask off: the joker grins. It's the same face as the app icon, so the picture is
+/// continuous from the home screen to the block screen to here.
 struct UnlockView: View {
     let cards: [Card]
     let manager: ScreenTimeManager
@@ -18,17 +18,17 @@ struct UnlockView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// What the card is showing, in the order it was turned to. Index 0 is always the lock.
+    /// What the card is showing, in the order it was turned to. Index 0 is always the mask.
     private enum Face {
-        case lock
+        case masked
         case question(Question)
         case joker
     }
 
-    @State private var faces: [Face] = [.lock]
+    @State private var faces: [Face] = [.masked]
     @State private var showing = 0
     @State private var turn: Double = 0
-    /// The lock card's arrival: it drops in oversized and settles.
+    /// The masked card's arrival: it drops in oversized and settles.
     @State private var landing: CGFloat = 1
     @State private var picked: Choice?
     @State private var correct = 0
@@ -92,18 +92,9 @@ struct UnlockView: View {
     @ViewBuilder
     private func face(_ face: Face) -> some View {
         switch face {
-        case .lock:
-            CardFace {
-                VStack(spacing: 18) {
-                    Image("LockFigure")
-                        .resizable()
-                        .scaledToFit()
-                        .padding(.horizontal, 86)
-                    Text("Blocked")
-                        .font(.pixel(24))
-                        .foregroundStyle(Brand.cardInk.opacity(0.65))
-                }
-                .padding(.vertical, 40)
+        case .masked:
+            CardFace(tint: Brand.mult) {
+                portrait("MaskedJoker", caption: "Blocked")
             }
         case .question(let question):
             CardFace(tint: Brand.chips) {
@@ -117,23 +108,31 @@ struct UnlockView: View {
             }
         case .joker:
             CardFace {
-                VStack(spacing: 18) {
-                    Image("JokerFigure")
-                        .resizable()
-                        .scaledToFit()
-                        .padding(.horizontal, 62)
-                    Text("Yours")
-                        .font(.pixel(24))
-                        .foregroundStyle(Brand.cardInk.opacity(0.65))
-                }
-                .padding(.vertical, 34)
+                portrait("JokerFigure", caption: "Yours")
             }
         }
     }
 
+    /// The figure fills the card the way the icon fills its square — the face is the point,
+    /// so it is given the room rather than floated in the middle of a lot of stock.
+    private func portrait(_ image: String, caption: String) -> some View {
+        VStack(spacing: 6) {
+            Image(image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity)
+            Text(caption)
+                .font(.pixel(22))
+                .foregroundStyle(Brand.cardInk.opacity(0.6))
+        }
+        .padding(.horizontal, 26)
+        .padding(.top, 26)
+        .padding(.bottom, 20)
+    }
+
     @ViewBuilder private var controls: some View {
         switch faces[showing] {
-        case .lock:
+        case .masked:
             Text("Turning it over…")
                 .font(.brandCaption)
                 .foregroundStyle(Brand.inkFaint)

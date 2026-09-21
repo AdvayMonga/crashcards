@@ -3,82 +3,105 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 
-// Crash Cards artwork. One drawing, four outputs.
+// Crash Cards artwork: the joker, masked and unmasked.
 //
-// Two cards say what the app is. The joker is what you'd rather be doing; the lock is what
-// stands in front of it. Fanned, with the lock card covering the joker, that reads as one
-// sentence without a word of copy — and the two faces are also what the unlock gate flips
-// between, so the picture on your home screen is the picture you meet when you're blocked.
+// The app's whole idea in two faces of one card. Masked, the joker wears a tragedy mask —
+// the fun is there but shut behind something. Unmasked, it grins: that's what you get back.
+// The unlock gate turns the card from one to the other, and the masked face is the app icon,
+// so the picture runs unbroken from the home screen to the block screen to the gate.
 //
-// The joker is a harlequin: split red and gold down the middle, angular rather than round,
-// drawn as linework on pale stock so it reads as a printed court card and not a sticker.
+// It's pixel art in the literal sense: every figure is drawn as vectors into a small aliased
+// bitmap and then blown up with no interpolation, so the stair-stepping is real rather than
+// a filter laid over a smooth drawing. Everything is laid out in a 1024-unit design space.
 //
-//   swift Tools/make-icon.swift icon   <out.png>   1024 app icon, opaque, on the felt table
-//   swift Tools/make-icon.swift shield <out.png>   both cards, transparent, for the shield
-//   swift Tools/make-icon.swift joker  <out.png>   the joker figure alone, transparent
-//   swift Tools/make-icon.swift lock   <out.png>   the padlock alone, transparent
-//
-// The two figure-only outputs are what the app draws inside its own card stock, so a card in
-// the gate and a card in a deck are the same object.
+//   swift Tools/make-icon.swift icon   <out.png>   1024 app icon, opaque, full bleed
+//   swift Tools/make-icon.swift masked <out.png>   the masked joker alone, transparent
+//   swift Tools/make-icon.swift joker  <out.png>   the grinning joker alone, transparent
+//   swift Tools/make-icon.swift shield <out.png>   the masked joker, sized for the shield
 //
 // Run from the repo root.
 
 let mode = CommandLine.arguments[1]
 let outPath = CommandLine.arguments[2]
 
-// The app's palette, from Brand.
-let tableDeep = NSColor(srgbRed: 0x16 / 255, green: 0x22 / 255, blue: 0x2C / 255, alpha: 1)
-let tableLift = NSColor(srgbRed: 0x2B / 255, green: 0x42 / 255, blue: 0x54 / 255, alpha: 1)
-let cardFace = NSColor(srgbRed: 0xF4 / 255, green: 0xEF / 255, blue: 0xE2 / 255, alpha: 1)
-let cardBack = NSColor(srgbRed: 0xCA / 255, green: 0xC3 / 255, blue: 0xB1 / 255, alpha: 1)
-let skin = NSColor(srgbRed: 0xFD / 255, green: 0xFA / 255, blue: 0xF1 / 255, alpha: 1)
-let outline = NSColor(srgbRed: 0x0E / 255, green: 0x15 / 255, blue: 0x19 / 255, alpha: 1)
-let gold = NSColor(srgbRed: 0xF0 / 255, green: 0xC0 / 255, blue: 0x40 / 255, alpha: 1)
-let mult = NSColor(srgbRed: 0xFE / 255, green: 0x5F / 255, blue: 0x55 / 255, alpha: 1)
+// MARK: - Palette
+//
+// Two tones per colour: pixel art needs a shadow to have any form at all, and a third tone
+// would start to look like a gradient rather than a drawing.
 
-/// Everything is laid out in a design space centred on the origin. Each mode frames a
-/// different rectangle of it, at a different pixel size.
+let tableDeep = NSColor(srgbRed: 0x16 / 255, green: 0x22 / 255, blue: 0x2C / 255, alpha: 1)
+let tableLift = NSColor(srgbRed: 0x24 / 255, green: 0x37 / 255, blue: 0x46 / 255, alpha: 1)
+let outline = NSColor(srgbRed: 0x0E / 255, green: 0x15 / 255, blue: 0x19 / 255, alpha: 1)
+
+let red = NSColor(srgbRed: 0xFE / 255, green: 0x5F / 255, blue: 0x55 / 255, alpha: 1)
+let redDark = NSColor(srgbRed: 0xC4 / 255, green: 0x41 / 255, blue: 0x3A / 255, alpha: 1)
+let gold = NSColor(srgbRed: 0xF0 / 255, green: 0xC0 / 255, blue: 0x40 / 255, alpha: 1)
+let goldDark = NSColor(srgbRed: 0xBF / 255, green: 0x93 / 255, blue: 0x27 / 255, alpha: 1)
+
+/// The joker's own face: warm, so the cool mask over it reads as a separate object.
+let skin = NSColor(srgbRed: 0xF7 / 255, green: 0xE0 / 255, blue: 0xB8 / 255, alpha: 1)
+let skinDark = NSColor(srgbRed: 0xD2 / 255, green: 0xB4 / 255, blue: 0x85 / 255, alpha: 1)
+let bone = NSColor(srgbRed: 0xE9 / 255, green: 0xE8 / 255, blue: 0xE0 / 255, alpha: 1)
+let boneDark = NSColor(srgbRed: 0xB3 / 255, green: 0xB2 / 255, blue: 0xA8 / 255, alpha: 1)
+
+// MARK: - Output shapes
+
 struct Output {
-    let frame: CGRect
-    let pixels: CGSize
+    /// The slice of design space this output frames.
+    let design: CGRect
+    /// The pixel grid the art is actually drawn on, before it is blown up.
+    let cols: Int
+    let rows: Int
+    /// Final size. Always a whole multiple of the grid, so every art pixel stays square.
+    let scale: Int
     let opaque: Bool
 }
 
 let outputs: [String: Output] = [
-    "icon": Output(frame: CGRect(x: -512, y: -512, width: 1024, height: 1024),
-                   pixels: CGSize(width: 1024, height: 1024), opaque: true),
-    "shield": Output(frame: CGRect(x: -400, y: -400, width: 800, height: 800),
-                     pixels: CGSize(width: 480, height: 480), opaque: false),
-    "joker": Output(frame: CGRect(x: -186, y: -226, width: 372, height: 452),
-                    pixels: CGSize(width: 558, height: 678), opaque: false),
-    "lock": Output(frame: CGRect(x: -150, y: -186, width: 300, height: 372),
-                   pixels: CGSize(width: 450, height: 558), opaque: false),
+    // Full bleed: the face fills the rounded square the way a map does, and the cap and
+    // ruff run off the edges rather than sitting politely inside them.
+    "icon": Output(design: CGRect(x: -512, y: -512, width: 1024, height: 1024),
+                   cols: 128, rows: 128, scale: 8, opaque: true),
+    "masked": Output(design: CGRect(x: -480, y: -560, width: 960, height: 1160),
+                     cols: 120, rows: 145, scale: 5, opaque: false),
+    "joker": Output(design: CGRect(x: -480, y: -560, width: 960, height: 1160),
+                    cols: 120, rows: 145, scale: 5, opaque: false),
+    "shield": Output(design: CGRect(x: -480, y: -560, width: 960, height: 1160),
+                     cols: 120, rows: 145, scale: 4, opaque: false),
 ]
 
 guard let out = outputs[mode] else { fatalError("mode must be one of \(outputs.keys.sorted())") }
 
 let space = CGColorSpaceCreateDeviceRGB()
-let ctx = CGContext(
-    data: nil, width: Int(out.pixels.width), height: Int(out.pixels.height),
-    bitsPerComponent: 8, bytesPerRow: 0, space: space,
-    bitmapInfo: (out.opaque ? CGImageAlphaInfo.noneSkipLast : .premultipliedLast).rawValue
-)!
-
-ctx.scaleBy(x: out.pixels.width / out.frame.width, y: out.pixels.height / out.frame.height)
-ctx.translateBy(x: -out.frame.minX, y: -out.frame.minY)
 
 // MARK: - Drawing helpers
 
-func fill(_ path: CGPath, _ colour: NSColor, edge: CGFloat = 16) {
-    ctx.addPath(path)
-    ctx.setFillColor(colour.cgColor)
-    ctx.fillPath()
+func fill(_ c: CGContext, _ path: CGPath, _ colour: NSColor) {
+    c.addPath(path)
+    c.setFillColor(colour.cgColor)
+    c.fillPath()
+}
+
+func stroke(_ c: CGContext, _ path: CGPath, _ colour: NSColor, width: CGFloat) {
+    c.addPath(path)
+    c.setStrokeColor(colour.cgColor)
+    c.setLineWidth(width)
+    c.setLineJoin(.round)
+    c.setLineCap(.round)
+    c.strokePath()
+}
+
+/// A solid shape with a shadow along its lower-right edge and a dark outline.
+///
+/// The shadow is the same shape laid down first and then covered by the base colour shifted
+/// up and to the left — which is how you shade a form when you only have two tones.
+func form(_ c: CGContext, _ path: CGPath, _ base: NSColor, _ shade: NSColor,
+          depth: CGFloat = 26, edge: CGFloat = 22) {
+    fill(c, path, shade)
+    var lift = CGAffineTransform(translationX: -depth, y: depth)
+    if let shifted = path.copy(using: &lift) { fill(c, shifted, base) }
     guard edge > 0 else { return }
-    ctx.addPath(path)
-    ctx.setStrokeColor(outline.cgColor)
-    ctx.setLineWidth(edge)
-    ctx.setLineJoin(.round)
-    ctx.strokePath()
+    stroke(c, path, outline, width: edge)
 }
 
 func polygon(_ points: [(CGFloat, CGFloat)]) -> CGPath {
@@ -89,244 +112,184 @@ func polygon(_ points: [(CGFloat, CGFloat)]) -> CGPath {
     return path
 }
 
-func diamond(at centre: CGPoint, width: CGFloat, height: CGFloat) -> CGPath {
-    polygon([(centre.x, centre.y + height), (centre.x + width, centre.y),
-             (centre.x, centre.y - height), (centre.x - width, centre.y)])
+func ellipse(_ centre: CGPoint, _ rx: CGFloat, _ ry: CGFloat) -> CGPath {
+    CGPath(ellipseIn: CGRect(x: centre.x - rx, y: centre.y - ry, width: rx * 2, height: ry * 2),
+           transform: nil)
 }
 
-/// Fills a shape in two colours split down the middle — the harlequin's whole idea.
-func fillHarlequin(_ path: CGPath, left: NSColor, right: NSColor, edge: CGFloat = 16) {
-    for (half, colour) in [(CGRect(x: -800, y: -800, width: 800, height: 1600), left),
-                           (CGRect(x: 0, y: -800, width: 800, height: 1600), right)] {
-        ctx.saveGState()
-        ctx.clip(to: half)
-        ctx.addPath(path)
-        ctx.setFillColor(colour.cgColor)
-        ctx.fillPath()
-        ctx.restoreGState()
-    }
-    ctx.addPath(path)
-    ctx.setStrokeColor(outline.cgColor)
-    ctx.setLineWidth(edge)
-    ctx.setLineJoin(.round)
-    ctx.strokePath()
+/// A lens between two quadratic arcs — every mouth in here is one of these.
+func lens(left: CGPoint, right: CGPoint, top: CGPoint, bottom: CGPoint) -> CGPath {
+    let path = CGMutablePath()
+    path.move(to: left)
+    path.addQuadCurve(to: right, control: top)
+    path.addQuadCurve(to: left, control: bottom)
+    path.closeSubpath()
+    return path
 }
 
-// MARK: - The suit
+// MARK: - The figure
 
-/// A padlock, centred on the origin of the current space.
-func lock(keyhole: Bool) {
-    // Straight legs up to a half-circle. The legs run down behind the body, so the body
-    // covers the stroke ends and the arc still clears it with a real opening.
-    let shackle = CGMutablePath()
-    shackle.move(to: CGPoint(x: -64, y: 20))
-    shackle.addLine(to: CGPoint(x: -64, y: 70))
-    shackle.addArc(center: CGPoint(x: 0, y: 70), radius: 64,
-                   startAngle: .pi, endAngle: 0, clockwise: true)
-    shackle.addLine(to: CGPoint(x: 64, y: 20))
-
-    for (width, colour) in [(64.0, outline), (32.0, gold)] {
-        ctx.addPath(shackle)
-        ctx.setStrokeColor(colour.cgColor)
-        ctx.setLineWidth(width)
-        ctx.setLineCap(.butt)
-        ctx.strokePath()
-    }
-
-    fill(CGPath(roundedRect: CGRect(x: -100, y: -122, width: 200, height: 192),
-                cornerWidth: 30, cornerHeight: 30, transform: nil), gold, edge: 18)
-
-    guard keyhole else { return }
-    ctx.setFillColor(outline.cgColor)
-    ctx.fillEllipse(in: CGRect(x: -25, y: -35, width: 50, height: 50))
-    ctx.addPath(polygon([(-17, -22), (17, -22), (10, -90), (-10, -90)]))
-    ctx.fillPath()
+/// A band split down the middle, which is what the harlequin's cap brim and collar both are.
+func band(_ c: CGContext, _ rect: CGRect, shadeAtTop: Bool) {
+    fill(c, CGPath(rect: CGRect(x: rect.minX, y: rect.minY, width: rect.width / 2,
+                                height: rect.height), transform: nil), gold)
+    fill(c, CGPath(rect: CGRect(x: rect.midX, y: rect.minY, width: rect.width / 2,
+                                height: rect.height), transform: nil), red)
+    fill(c, CGPath(rect: CGRect(x: rect.minX, y: shadeAtTop ? rect.maxY - 26 : rect.minY,
+                                width: rect.width, height: 26), transform: nil), goldDark)
+    stroke(c, CGPath(rect: rect, transform: nil), outline, width: 22)
 }
 
-// MARK: - The joker
+/// The cap's points, which run off the top and the sides on purpose.
+func capPoints(_ c: CGContext) {
+    let points: [(path: CGPath, base: NSColor, shade: NSColor)] = [
+        (polygon([(-380, 250), (-540, 500), (-190, 330)]), red, redDark),
+        (polygon([(-172, 280), (0, 560), (172, 280)]), gold, goldDark),
+        (polygon([(380, 250), (540, 500), (190, 330)]), red, redDark),
+    ]
+    for point in points { form(c, point.path, point.base, point.shade, depth: 20) }
 
-/// A harlequin bust: ruff, head, face, cap. Split red and gold down the centre line.
-func joker() {
-    // Ruff — four points hanging off a band, alternating colour across the split.
-    let spans: [(CGFloat, CGFloat)] = [(-112, -56), (-56, 0), (0, 56), (56, 112)]
-    for (index, span) in spans.enumerated() {
-        fill(polygon([(span.0, -116), (span.1, -116), ((span.0 + span.1) / 2, -206)]),
-             index.isMultiple(of: 2) ? mult : gold, edge: 14)
+    for bell in [CGPoint(x: -540, y: 500), CGPoint(x: 0, y: 560), CGPoint(x: 540, y: 500)] {
+        form(c, ellipse(bell, 62, 62), gold, goldDark, depth: 18)
     }
-    fillHarlequin(CGPath(roundedRect: CGRect(x: -118, y: -136, width: 236, height: 36),
-                         cornerWidth: 12, cornerHeight: 12, transform: nil),
-                  left: gold, right: mult, edge: 16)
+}
 
-    // Head — faceted rather than round, so it reads as drawn instead of stamped.
-    fill(polygon([(0, 62), (-54, 48), (-78, 4), (-70, -46), (-36, -98), (0, -114),
-                  (36, -98), (70, -46), (78, 4), (54, 48)]), skin, edge: 16)
+/// The brim, worn across the forehead, so it goes over the head rather than behind it.
+func capBrim(_ c: CGContext) {
+    band(c, CGRect(x: -352, y: 196, width: 704, height: 92), shadeAtTop: false)
+}
 
-    // Brows: angled outward and down, which is most of the expression.
-    ctx.setStrokeColor(outline.cgColor)
-    ctx.setLineCap(.round)
-    ctx.setLineWidth(13)
+/// The ruff's points, hanging off the bottom edge.
+func ruffPoints(_ c: CGContext) {
+    let spans: [CGFloat] = [-390, -260, -130, 0, 130, 260, 390]
+    for index in 0..<(spans.count - 1) {
+        let warm = index.isMultiple(of: 2)
+        form(c, polygon([(spans[index], -398), (spans[index + 1], -398),
+                         ((spans[index] + spans[index + 1]) / 2, -640)]),
+             warm ? red : gold, warm ? redDark : goldDark, depth: 18)
+    }
+}
+
+/// The collar, which sits in front of the chin.
+func ruffBand(_ c: CGContext) {
+    band(c, CGRect(x: -406, y: -430, width: 812, height: 92), shadeAtTop: true)
+}
+
+/// The head under everything, which the mask sits on top of.
+func head(_ c: CGContext, tone: NSColor, shade: NSColor) {
+    form(c, ellipse(CGPoint(x: 0, y: -46), 352, 336), tone, shade, depth: 30)
+}
+
+/// Tragedy: hollow sockets, brows raised in the middle, mouth turned down at the corners.
+func tragedyMask(_ c: CGContext) {
+    form(c, ellipse(CGPoint(x: 0, y: -50), 302, 292), bone, boneDark, depth: 26)
+
     for side in [-1.0, 1.0] {
-        ctx.move(to: CGPoint(x: side * 56, y: 4))
-        ctx.addLine(to: CGPoint(x: side * 16, y: 16))
-        ctx.strokePath()
+        fill(c, ellipse(CGPoint(x: side * 128, y: 10), 68, 82), outline)
     }
 
-    // Eyes as small diamonds — the harlequin motif, not a pair of dots.
-    ctx.setFillColor(outline.cgColor)
+    // Brows lifted at the inner ends — the whole expression is in these two strokes.
     for side in [-1.0, 1.0] {
-        ctx.addPath(diamond(at: CGPoint(x: side * 34, y: -14), width: 17, height: 13))
-        ctx.fillPath()
+        let brow = CGMutablePath()
+        brow.move(to: CGPoint(x: side * 176, y: 118))
+        brow.addQuadCurve(to: CGPoint(x: side * 52, y: 168),
+                          control: CGPoint(x: side * 116, y: 162))
+        stroke(c, brow, outline, width: 40)
     }
 
-    // A harlequin tear under one eye.
-    fill(diamond(at: CGPoint(x: -56, y: -46), width: 12, height: 17), mult, edge: 9)
+    // A mouth whose corners hang below its middle. The reverse of this is the grin.
+    fill(c, lens(left: CGPoint(x: -166, y: -250), right: CGPoint(x: 166, y: -250),
+                 top: CGPoint(x: 0, y: -84), bottom: CGPoint(x: 0, y: -236)), outline)
 
-    // Nose.
-    ctx.setStrokeColor(outline.cgColor)
-    ctx.setLineWidth(11)
-    ctx.move(to: CGPoint(x: 0, y: -22))
-    ctx.addLine(to: CGPoint(x: 0, y: -54))
-    ctx.addLine(to: CGPoint(x: 15, y: -60))
-    ctx.strokePath()
+    fill(c, polygon([(0, -26), (54, -142), (-54, -142)]), boneDark)
 
-    // Smirk, lifted on one side. A symmetric grin is what made the last one a smiley.
-    let smirk = CGMutablePath()
-    smirk.move(to: CGPoint(x: -34, y: -74))
-    smirk.addCurve(to: CGPoint(x: 38, y: -50),
-                   control1: CGPoint(x: -4, y: -98), control2: CGPoint(x: 26, y: -86))
-    ctx.addPath(smirk)
-    ctx.setLineWidth(13)
-    ctx.strokePath()
+    // The rim, so it reads as something worn rather than as the face itself.
+    stroke(c, ellipse(CGPoint(x: 0, y: -50), 302, 292), outline, width: 22)
+}
 
-    // Cap: three drooping points over a brim, split down the middle.
-    fillHarlequin(polygon([(-92, 40), (-150, 104), (-48, 90), (0, 168),
-                           (48, 90), (150, 104), (92, 40)]),
-                  left: mult, right: gold, edge: 17)
-    ctx.setStrokeColor(outline.cgColor)
-    ctx.setLineWidth(11)
-    ctx.move(to: CGPoint(x: 0, y: 44))
-    ctx.addLine(to: CGPoint(x: 0, y: 166))
-    ctx.strokePath()
-
-    fillHarlequin(CGPath(roundedRect: CGRect(x: -98, y: 24, width: 196, height: 38),
-                         cornerWidth: 14, cornerHeight: 14, transform: nil),
-                  left: gold, right: mult, edge: 16)
-
-    for bell in [CGPoint(x: -150, y: 104), CGPoint(x: 0, y: 170), CGPoint(x: 150, y: 104)] {
-        fill(CGPath(ellipseIn: CGRect(x: bell.x - 24, y: bell.y - 24, width: 48, height: 48),
-                    transform: nil), gold, edge: 15)
+/// The face under the mask: eyes up, mouth wide open, teeth showing.
+func grin(_ c: CGContext) {
+    for side in [-1.0, 1.0] {
+        fill(c, ellipse(CGPoint(x: side * 134, y: 26), 60, 70), outline)
+        // A highlight is the difference between an eye and a hole.
+        fill(c, ellipse(CGPoint(x: side * 134 + 20, y: 50), 20, 22), bone)
     }
-}
 
-// MARK: - Cards
+    // Brows raised at the outer ends, the mirror of the mask's.
+    for side in [-1.0, 1.0] {
+        let brow = CGMutablePath()
+        brow.move(to: CGPoint(x: side * 226, y: 152))
+        brow.addQuadCurve(to: CGPoint(x: side * 64, y: 118),
+                          control: CGPoint(x: side * 146, y: 160))
+        stroke(c, brow, outline, width: 32)
+    }
 
-let cardWidth = 452.0, cardHeight = 610.0
-let cardRadius = 54.0
+    let mouth = lens(left: CGPoint(x: -212, y: -124), right: CGPoint(x: 212, y: -124),
+                     top: CGPoint(x: 0, y: -188), bottom: CGPoint(x: 0, y: -376))
+    fill(c, mouth, outline)
 
-/// One card: ledge, stock, near-black edge, gold inner frame, then whatever it carries.
-func card(at centre: CGPoint, rotation: CGFloat, stock: NSColor, contents: () -> Void) {
-    ctx.saveGState()
-    ctx.translateBy(x: centre.x, y: centre.y)
-    ctx.rotate(by: rotation)
+    // Teeth along the top lip, clipped to the mouth so they can't spill onto the cheeks.
+    c.saveGState()
+    c.addPath(mouth)
+    c.clip()
+    for x in stride(from: -180.0, through: 150.0, by: 66.0) {
+        fill(c, CGPath(rect: CGRect(x: x, y: -232, width: 48, height: 80), transform: nil), bone)
+    }
+    c.restoreGState()
 
-    let rect = CGRect(x: -cardWidth / 2, y: -cardHeight / 2, width: cardWidth, height: cardHeight)
-
-    ctx.addPath(CGPath(roundedRect: rect.offsetBy(dx: 0, dy: -22),
-                       cornerWidth: cardRadius, cornerHeight: cardRadius, transform: nil))
-    ctx.setFillColor(outline.cgColor)
-    ctx.fillPath()
-
-    fill(CGPath(roundedRect: rect, cornerWidth: cardRadius, cornerHeight: cardRadius,
-                transform: nil), stock, edge: 18)
-
-    ctx.addPath(CGPath(roundedRect: rect.insetBy(dx: 30, dy: 30),
-                       cornerWidth: cardRadius - 18, cornerHeight: cardRadius - 18,
-                       transform: nil))
-    ctx.setStrokeColor(gold.withAlphaComponent(0.55).cgColor)
-    ctx.setLineWidth(8)
-    ctx.strokePath()
-
-    contents()
-    ctx.restoreGState()
-}
-
-/// The suit, in the two corners a rank and pip would occupy. Both upright: a card rotates
-/// its indices, but a padlock turned upside down reads as a broken padlock.
-func cornerSuit() {
-    for corner in [CGPoint(x: -cardWidth / 2 + 74, y: cardHeight / 2 - 86),
-                   CGPoint(x: cardWidth / 2 - 74, y: -cardHeight / 2 + 86)] {
-        ctx.saveGState()
-        ctx.translateBy(x: corner.x, y: corner.y)
-        ctx.scaleBy(x: 0.28, y: 0.28)
-        lock(keyhole: false)
-        ctx.restoreGState()
+    for side in [-1.0, 1.0] {
+        fill(c, ellipse(CGPoint(x: side * 246, y: -118), 54, 40), red)
     }
 }
 
 // MARK: - Compose
 
-switch mode {
-case "joker":
-    ctx.translateBy(x: 0, y: -10)
-    joker()
+/// Draws the whole figure into a low-resolution aliased bitmap. Blowing that up with no
+/// interpolation is what makes this pixel art rather than a vector drawing with a filter.
+func figure(masked: Bool, background: Bool) -> CGImage {
+    let c = CGContext(data: nil, width: out.cols, height: out.rows, bitsPerComponent: 8,
+                      bytesPerRow: 0, space: space,
+                      bitmapInfo: (out.opaque ? CGImageAlphaInfo.noneSkipLast
+                                              : CGImageAlphaInfo.premultipliedLast).rawValue)!
+    c.setShouldAntialias(false)
+    c.setAllowsAntialiasing(false)
+    c.interpolationQuality = .none
+    c.scaleBy(x: CGFloat(out.cols) / out.design.width, y: CGFloat(out.rows) / out.design.height)
+    c.translateBy(x: -out.design.minX, y: -out.design.minY)
 
-case "lock":
-    ctx.scaleBy(x: 1.18, y: 1.18)
-    ctx.translateBy(x: 0, y: -6)
-    lock(keyhole: true)
-
-default:
-    if mode == "icon" {
-        ctx.setFillColor(tableDeep.cgColor)
-        ctx.fill(CGRect(x: -512, y: -512, width: 1024, height: 1024))
-
-        /// One of the broad sweeps the app's background drifts through, frozen in place.
-        func band(angle: CGFloat, offset: CGFloat, thickness: CGFloat, strength: CGFloat) {
-            ctx.saveGState()
-            ctx.rotate(by: angle)
-            ctx.clip(to: CGRect(x: -1024, y: offset - thickness / 2,
-                                width: 2048, height: thickness))
-            let sweep = CGGradient(
-                colorsSpace: space,
-                colors: [tableLift.withAlphaComponent(0).cgColor,
-                         tableLift.withAlphaComponent(strength).cgColor,
-                         tableLift.withAlphaComponent(0).cgColor] as CFArray,
-                locations: [0, 0.5, 1])!
-            ctx.drawLinearGradient(sweep, start: CGPoint(x: 0, y: offset - thickness / 2),
-                                   end: CGPoint(x: 0, y: offset + thickness / 2), options: [])
-            ctx.restoreGState()
-        }
-        band(angle: -.pi / 6.4, offset: 170, thickness: 660, strength: 1.0)
-        band(angle: -.pi / 4.6, offset: -280, thickness: 460, strength: 0.7)
-
-        let vignette = CGGradient(colorsSpace: space,
-                                  colors: [tableDeep.withAlphaComponent(0).cgColor,
-                                           tableDeep.withAlphaComponent(0.74).cgColor] as CFArray,
-                                  locations: [0, 1])!
-        ctx.drawRadialGradient(vignette, startCenter: .zero, startRadius: 190,
-                               endCenter: .zero, endRadius: 760, options: .drawsAfterEndLocation)
+    if background {
+        fill(c, CGPath(rect: out.design, transform: nil), tableDeep)
+        // One broad diagonal, the same sweep the app's table drifts through.
+        c.saveGState()
+        c.rotate(by: -.pi / 6)
+        fill(c, CGPath(rect: CGRect(x: -1200, y: -120, width: 2400, height: 560),
+                       transform: nil), tableLift)
+        c.restoreGState()
     }
 
-    // The joker behind, showing enough of itself to be read; the lock card over it.
-    ctx.scaleBy(x: 0.86, y: 0.86)
-
-    card(at: CGPoint(x: 190, y: 74), rotation: .pi / 9, stock: cardBack) {
-        ctx.translateBy(x: 0, y: -10)
-        ctx.scaleBy(x: 0.84, y: 0.84)
-        joker()
-    }
-
-    card(at: CGPoint(x: -126, y: -52), rotation: -.pi / 40, stock: cardFace) {
-        ctx.saveGState()
-        ctx.translateBy(x: 0, y: -4)
-        lock(keyhole: true)
-        ctx.restoreGState()
-        cornerSuit()
-    }
+    capPoints(c)
+    ruffPoints(c)
+    head(c, tone: skin, shade: skinDark)
+    if masked { tragedyMask(c) } else { grin(c) }
+    capBrim(c)
+    ruffBand(c)
+    return c.makeImage()!
 }
+
+let art = figure(masked: mode != "joker", background: mode == "icon")
+
+let width = out.cols * out.scale
+let height = out.rows * out.scale
+let final = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                      bytesPerRow: 0, space: space,
+                      bitmapInfo: (out.opaque ? CGImageAlphaInfo.noneSkipLast
+                                              : CGImageAlphaInfo.premultipliedLast).rawValue)!
+final.interpolationQuality = .none
+final.setShouldAntialias(false)
+final.draw(art, in: CGRect(x: 0, y: 0, width: width, height: height))
 
 let url = URL(fileURLWithPath: outPath) as CFURL
 let destination = CGImageDestinationCreateWithURL(url, UTType.png.identifier as CFString, 1, nil)!
-CGImageDestinationAddImage(destination, ctx.makeImage()!, nil)
+CGImageDestinationAddImage(destination, final.makeImage()!, nil)
 CGImageDestinationFinalize(destination)
-print("wrote \(outPath)")
+print("wrote \(outPath) — \(width)x\(height) from a \(out.cols)x\(out.rows) grid")

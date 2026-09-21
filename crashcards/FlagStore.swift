@@ -69,6 +69,7 @@ final class FlagStore {
 
     func flag(_ card: Card, as reason: FlagReason) {
         guard !isLocked else { reportLocked(); return }
+        let previous = flags
         let entry = Flag(setID: card.setID, setTitle: card.setTitle,
                          prompt: card.prompt, answer: card.answer, reason: reason.rawValue)
         if let i = flags.firstIndex(where: { $0.id == entry.id }) {
@@ -76,13 +77,14 @@ final class FlagStore {
         } else {
             flags.append(entry)
         }
-        save()
+        save(rollingBackTo: previous)
     }
 
     func unflag(_ card: Card) {
         guard !isLocked else { reportLocked(); return }
+        let previous = flags
         flags.removeAll { $0.id == key(for: card) }
-        save()
+        save(rollingBackTo: previous)
     }
 
     private func key(for card: Card) -> String { "\(card.setID)|\(card.prompt)" }
@@ -91,11 +93,15 @@ final class FlagStore {
         writeError = "\(Self.filename) couldn't be read, so it won't be overwritten and flagging is paused. \(loadError ?? "")"
     }
 
-    private func save() {
+    /// The file is the only state, so a failed write must not leave the UI showing a flag
+    /// that isn't in it — the card would read as flagged until the next reload silently
+    /// reverted it.
+    private func save(rollingBackTo previous: [Flag]) {
         do {
             try FolderAccess.writeAppFile(Self.filename, contents: render())
             writeError = nil
         } catch {
+            flags = previous
             writeError = error.localizedDescription
         }
     }

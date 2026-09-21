@@ -14,11 +14,10 @@ import Testing
         FlashcardSet(id: "s.md", title: "S", cards: cards)
     }
 
-    @Test func quizUsesOnlyQuestionsWhileTheOtherModesUseEverything() {
+    @Test func quizUsesOnlyQuestionsWhileFlashcardsUseEverything() {
         let mixed = [set([flip, question])]
         #expect(StudyMode.quiz.usableCards(in: mixed).count == 1)
         #expect(StudyMode.flashcards.usableCards(in: mixed).count == 2)
-        #expect(StudyMode.voice.usableCards(in: mixed).count == 2)
     }
 
     @Test func quizExplainsItselfWhenASetHasNoQuestions() {
@@ -26,7 +25,7 @@ import Testing
         #expect(StudyMode.flashcards.unavailableReason(for: [set([flip])]) == nil)
     }
 
-    @Test(arguments: [StudyMode.flashcards, .quiz, .voice])
+    @Test(arguments: StudyMode.allCases)
     func noSetsAndNoCardsAreExplainedForEveryMode(mode: StudyMode) {
         #expect(mode.unavailableReason(for: []) == .noSetsSelected)
         #expect(mode.unavailableReason(for: [set([])]) == .noCards)

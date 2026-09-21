@@ -73,35 +73,53 @@ struct CardDeckView: View {
         }
     }
 
-    /// One card per screenful, snapping like a reel. Scrolling is the one place a swipe
-    /// belongs, so this is a real paging scroll rather than a styled transition.
+    /// A playing card's proportions, the smallest margin it will accept either side, and how
+    /// much of the next card is allowed past the edge.
+    private static let aspect: CGFloat = 0.72
+    private static let minMargin: CGFloat = 22
+    private static let peek: CGFloat = 14
+
+    /// One card at a time, dealt sideways. A sliver of the next card sits past the edge:
+    /// enough to say the deck carries on, not enough to read anything off it.
+    ///
+    /// The sizing has to be worked out rather than declared. A card is usually limited by
+    /// the height available, not the width, so a page sized to the container would be much
+    /// wider than the card standing in it — and the gap you'd see between two cards would be
+    /// that slack, not the peek. So the page is made exactly the size of the card, and the
+    /// spacing is then whatever leaves `peek` showing.
+    ///
+    /// `.viewAligned` rather than `.paging`, because a page here is narrower than the screen
+    /// and paging would step by the full width and walk the deck out of alignment.
     private var feed: some View {
-        ScrollView(.vertical) {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(deck.enumerated()), id: \.offset) { index, card in
-                    // Held to a playing card's proportions rather than filling the page, so
-                    // there is always table around it.
-                    FlipCard(card: card, isFlipped: flipped.contains(card.id)) {
-                        toggleFlip(card)
-                    }
-                        .aspectRatio(0.72, contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .containerRelativeFrame(.vertical)
+        GeometryReader { geometry in
+            let room = geometry.size
+            let cardWidth = min(room.width - Self.minMargin * 2,
+                                (room.height - 28) * Self.aspect)
+            let margin = (room.width - cardWidth) / 2
+            let spacing = max(10, margin - Self.peek)
+
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: spacing) {
+                    ForEach(Array(deck.enumerated()), id: \.offset) { index, card in
+                        FlipCard(card: card, isFlipped: flipped.contains(card.id)) {
+                            toggleFlip(card)
+                        }
+                        .frame(width: cardWidth, height: cardWidth / Self.aspect)
                         .id(index)
+                    }
+                    DeckEnd(count: deck.count, onShuffle: shuffle, onDone: onClose)
+                        .frame(width: cardWidth, height: cardWidth / Self.aspect)
+                        .id(deck.count)
                 }
-                DeckEnd(count: deck.count, onShuffle: shuffle, onDone: onClose)
-                    .padding(.horizontal, 20)
-                    .containerRelativeFrame(.vertical)
-                    .id(deck.count)
+                .scrollTargetLayout()
+                .frame(height: room.height)
             }
-            .scrollTargetLayout()
+            .contentMargins(.horizontal, margin, for: .scrollContent)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $visible)
+            .scrollIndicators(.hidden)
+            .onChange(of: visible) { _, _ in Haptics.tap() }
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $visible)
-        .scrollIndicators(.hidden)
-        .onChange(of: visible) { _, _ in Haptics.tap() }
     }
 
     private var header: some View {

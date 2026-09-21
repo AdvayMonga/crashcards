@@ -3,6 +3,11 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 
+// SUPERSEDED. The shipped icon, card figures and shield art are hand-made pixel art now,
+// dropped straight into the asset catalogs. Running this would overwrite all four with the
+// generated versions below, which are not what the app ships. Kept only as a record of how
+// the generated set was built.
+//
 // Crash Cards artwork: the joker, masked and unmasked.
 //
 // The app's whole idea in two faces of one card. Masked, the joker wears a tragedy mask —

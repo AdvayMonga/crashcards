@@ -11,6 +11,11 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
+    # Needed to run on a real device. The app and all three extensions need Family Controls
+    # and a shared app group, so Xcode has to register four App IDs against a real team —
+    # the simulator never asks, which is why this only bites the first time you go to device.
+    DEVELOPMENT_TEAM: S8FH5MCHLY
+    CODE_SIGN_STYLE: Automatic
 # Only the app is meant to be run; the extensions ship inside it.
 schemes:
   crashcards:

@@ -93,7 +93,9 @@ struct UnlockView: View {
     private func face(_ face: Face) -> some View {
         switch face {
         case .masked:
-            CardFace(tint: Brand.mult) {
+            // Blue while it's shut, gold once it opens — the frame line picks up whichever
+            // colour the figure on the card is wearing.
+            CardFace(tint: Brand.chips) {
                 portrait("MaskedJoker", caption: "Blocked")
             }
         case .question(let question):

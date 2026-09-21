@@ -169,7 +169,7 @@ enum FolderAccess {
             load.fileIssues.append(FileIssues(id: url.path, filename: name, issues: parsed.issues))
         }
         guard !parsed.set.cards.isEmpty else { return }
-        load.sets.append(uniquelyIdentified(parsed.set, seen: &seen))
+        load.sets.append(uniquelyIdentified(parsed.set, at: url, seen: &seen))
     }
 
     /// Is `path` inside directory `parent`?
@@ -184,14 +184,15 @@ enum FolderAccess {
         return try? String(contentsOf: url, usedEncoding: &encoding)
     }
 
-    /// Filenames can collide across folders; give each set a unique id.
-    private static func uniquelyIdentified(_ set: FlashcardSet, seen: inout Set<String>) -> FlashcardSet {
+    /// Filenames can collide across folders; give each set a unique id, and remember the
+    /// file it came from so the app can act on the ones it owns.
+    private static func uniquelyIdentified(_ set: FlashcardSet, at url: URL,
+                                           seen: inout Set<String>) -> FlashcardSet {
         var uid = set.id
         var n = 2
         while seen.contains(uid) { uid = "\(set.id) (\(n))"; n += 1 }
         seen.insert(uid)
-        guard uid != set.id else { return set }
-        return FlashcardSet(id: uid, title: set.title, cards: set.cards)
+        return FlashcardSet(id: uid, title: set.title, cards: set.cards, fileURL: url)
     }
 
     /// Every readable set file under `folder`, or nil if the folder can't be enumerated.

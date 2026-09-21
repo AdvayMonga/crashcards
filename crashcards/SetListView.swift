@@ -9,6 +9,9 @@ struct SetListView: View {
     @State private var studyingVoice = false
     @State private var importingFolder = false
     @State private var importingSet = false
+    @State private var renaming: FlashcardSet?
+    @State private var deleting: FlashcardSet?
+    @State private var newTitle = ""
 
     private var selectedSets: [FlashcardSet] {
         library.sets.filter { selected.contains($0.id) }
@@ -60,6 +63,23 @@ struct SetListView: View {
             case .failure(let error): library.importFailed(error)
             }
         }
+        .alert("Rename set", isPresented: presenting($renaming), presenting: renaming) { set in
+            TextField("Name", text: $newTitle)
+            Button("Rename") { library.renameSet(set, to: newTitle) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Delete this set?", isPresented: presenting($deleting), presenting: deleting) { set in
+            Button("Delete", role: .destructive) { library.deleteSet(set) }
+            Button("Cancel", role: .cancel) {}
+        } message: { set in
+            Text("“\(set.title)” is removed from the app's library. This can't be undone.")
+        }
+    }
+
+    /// Drives an alert from an optional selection without losing the value while it dismisses.
+    private func presenting<T>(_ selection: Binding<T?>) -> Binding<Bool> {
+        Binding(get: { selection.wrappedValue != nil },
+                set: { if !$0 { selection.wrappedValue = nil } })
     }
 
     /// A mode is only entered with cards it can actually present; otherwise it explains why.
@@ -120,6 +140,7 @@ struct SetListView: View {
                     ForEach(library.sets) { set in
                         Button { toggle(set.id) } label: { row(for: set) }
                             .buttonStyle(.plain)
+                            .contextMenu { actions(for: set) }
                     }
                 }
                 .padding(.horizontal, 18)
@@ -127,6 +148,20 @@ struct SetListView: View {
                 .padding(.bottom, 12)
             }
             .background(Brand.canvas)
+        }
+    }
+
+    /// Only sets the app owns can be renamed or deleted — a file in an attached folder is
+    /// the user's, and the app never edits those.
+    @ViewBuilder private func actions(for set: FlashcardSet) -> some View {
+        if set.isLocal {
+            Button {
+                newTitle = set.title
+                renaming = set
+            } label: { Label("Rename", systemImage: "pencil") }
+            Button(role: .destructive) { deleting = set } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 

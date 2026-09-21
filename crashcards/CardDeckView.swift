@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Flashcards: a vertical feed of cards. Scroll up for the next one, tap to flip.
+/// Flashcards: a stack of cards on the table. Swipe the top one away for the next, tap to
+/// flip it over.
 ///
 /// No grading and no buttons — this mode is for going through a deck, not scoring yourself.
 /// Quiz mode is where answers are judged.
@@ -12,22 +13,38 @@ struct CardDeckView: View {
     /// Shuffled once, on entry. The library re-scans on every foreground, so holding the
     /// cards the parent hands us would swap the deck out from under a session in progress.
     @State private var deck: [Card]
-    @State private var visible: Int?
+    /// How far into the deck we are. Everything before this has been thrown.
+    @State private var position = 0
     @State private var flagging = false
-    /// Which cards are face-up, by card identity. Held here rather than inside `FlipCard`
-    /// because the feed identifies rows by position: after a shuffle the view in a given
-    /// slot is reused, and per-view state would land on a different card.
+    /// Which cards are face-up, by card identity rather than by slot, so a shuffle can't
+    /// hand you a card that is already turned over.
     @State private var flipped: Set<Card.ID> = []
+    /// Where the finger has dragged the top card. Zero whenever nothing is being held.
+    @State private var held: CGSize = .zero
+
+    /// A playing card's proportions, the margin it keeps from the screen edge, and how far
+    /// each card behind the top one is offset — which is all you ever see of them.
+    private static let aspect: CGFloat = 0.72
+    private static let margin: CGFloat = 26
+    private static let step: CGFloat = 13
+    /// How far the top card travels before letting go throws it rather than returns it.
+    private static let throwDistance: CGFloat = 96
 
     init(cards: [Card], onClose: @escaping () -> Void) {
         _deck = State(initialValue: cards.shuffled())
         self.onClose = onClose
     }
 
-    private var position: Int { visible ?? 0 }
     private var currentCard: Card? {
         guard deck.indices.contains(position) else { return nil }
         return deck[position]
+    }
+
+    /// The top card and the two behind it, nearest last so the ZStack puts it on top.
+    private var visible: [(depth: Int, card: Card)] {
+        (position..<min(position + 3, deck.count))
+            .map { (depth: $0 - position, card: deck[$0]) }
+            .reversed()
     }
 
     var body: some View {
@@ -41,8 +58,12 @@ struct CardDeckView: View {
                     Button("Back to sets") { onClose() }
                         .buttonStyle(CrashButton(fullWidth: false))
                 }
+            } else if position >= deck.count {
+                DeckEnd(count: deck.count, onShuffle: shuffle, onDone: onClose)
+                    .padding(.horizontal, 26)
+                    .transition(.dealIn)
             } else {
-                feed
+                stack
             }
 
             if flagging {
@@ -51,18 +72,92 @@ struct CardDeckView: View {
                             onCancel: { flagging = false }) {
                     FlagOptions(card: currentCard) { flagging = false }
                 }
-                .zIndex(1)
+                .zIndex(2)
             }
         }
         .safeAreaInset(edge: .top) { header }
         .animation(Motion.pop, value: flagging)
     }
 
+    // MARK: - The stack
+
+    private var stack: some View {
+        GeometryReader { geometry in
+            let room = geometry.size
+            let width = min(room.width - Self.margin * 2, (room.height - 40) * Self.aspect)
+
+            ZStack {
+                ForEach(visible, id: \.card.id) { entry in
+                    let depth = CGFloat(entry.depth)
+                    let top = entry.depth == 0
+
+                    FlipCard(card: entry.card, isFlipped: flipped.contains(entry.card.id))
+                        .frame(width: width, height: width / Self.aspect)
+                        // The cards behind sit down and to the right, so all that shows of
+                        // them is an edge. They are still whole cards, so the one that comes
+                        // up next is already right rather than popping into place.
+                        .scaleEffect(top ? 1 : 1 - depth * 0.035, anchor: .top)
+                        .offset(x: top ? 0 : depth * Self.step,
+                                y: top ? 0 : depth * Self.step)
+                        .rotationEffect(.degrees(top ? 0 : Double(depth) * 1.6), anchor: .top)
+                        .modifier(HeldCard(offset: top ? held : .zero))
+                        .breathing(top && !flipped.contains(entry.card.id) ? 0.8 : 0, period: 3.4)
+                        .zIndex(Double(-entry.depth))
+                        .allowsHitTesting(top)
+                        .accessibilityHidden(!top)
+                        .onTapGesture { toggleFlip(entry.card) }
+                        .gesture(top ? swipe : nil)
+                }
+            }
+            .frame(width: room.width, height: room.height)
+            .animation(Motion.settle, value: position)
+        }
+    }
+
+    /// Drag the top card and it follows; let go past `throwDistance`, or with enough flick
+    /// behind it, and it carries on off the table instead of settling back.
+    private var swipe: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { held = $0.translation }
+            .onEnded { value in
+                let thrown = abs(value.translation.width) > Self.throwDistance
+                    || abs(value.predictedEndTranslation.width) > 240
+                if thrown {
+                    throwAway(toward: value.translation.width < 0 ? -1 : 1)
+                } else {
+                    withAnimation(Motion.pop(reduceMotion)) { held = .zero }
+                }
+            }
+    }
+
+    private func throwAway(toward direction: CGFloat) {
+        Haptics.knock()
+        guard !reduceMotion else {
+            advance()
+            return
+        }
+        withAnimation(.easeOut(duration: 0.24)) {
+            held = CGSize(width: direction * 900, height: held.height - 60)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.24))
+            advance()
+        }
+    }
+
+    /// Both halves in one update: the thrown card leaves the stack and the hand resets, so
+    /// the card coming up is never briefly drawn where the last one was flung.
+    private func advance() {
+        position += 1
+        held = .zero
+    }
+
     private func shuffle() {
         Haptics.thud()
         deck.shuffle()
         flipped.removeAll()
-        visible = 0
+        held = .zero
+        position = 0
     }
 
     private func toggleFlip(_ card: Card) {
@@ -70,55 +165,6 @@ struct CardDeckView: View {
         withAnimation(reduceMotion ? .easeInOut(duration: 0.22)
                                    : .spring(response: 0.46, dampingFraction: 0.68)) {
             if flipped.contains(card.id) { flipped.remove(card.id) } else { flipped.insert(card.id) }
-        }
-    }
-
-    /// A playing card's proportions, the smallest margin it will accept either side, and how
-    /// much of the next card is allowed past the edge.
-    private static let aspect: CGFloat = 0.72
-    private static let minMargin: CGFloat = 22
-    private static let peek: CGFloat = 14
-
-    /// One card at a time, dealt sideways. A sliver of the next card sits past the edge:
-    /// enough to say the deck carries on, not enough to read anything off it.
-    ///
-    /// The sizing has to be worked out rather than declared. A card is usually limited by
-    /// the height available, not the width, so a page sized to the container would be much
-    /// wider than the card standing in it — and the gap you'd see between two cards would be
-    /// that slack, not the peek. So the page is made exactly the size of the card, and the
-    /// spacing is then whatever leaves `peek` showing.
-    ///
-    /// `.viewAligned` rather than `.paging`, because a page here is narrower than the screen
-    /// and paging would step by the full width and walk the deck out of alignment.
-    private var feed: some View {
-        GeometryReader { geometry in
-            let room = geometry.size
-            let cardWidth = min(room.width - Self.minMargin * 2,
-                                (room.height - 28) * Self.aspect)
-            let margin = (room.width - cardWidth) / 2
-            let spacing = max(10, margin - Self.peek)
-
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: spacing) {
-                    ForEach(Array(deck.enumerated()), id: \.offset) { index, card in
-                        FlipCard(card: card, isFlipped: flipped.contains(card.id)) {
-                            toggleFlip(card)
-                        }
-                        .frame(width: cardWidth, height: cardWidth / Self.aspect)
-                        .id(index)
-                    }
-                    DeckEnd(count: deck.count, onShuffle: shuffle, onDone: onClose)
-                        .frame(width: cardWidth, height: cardWidth / Self.aspect)
-                        .id(deck.count)
-                }
-                .scrollTargetLayout()
-                .frame(height: room.height)
-            }
-            .contentMargins(.horizontal, margin, for: .scrollContent)
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $visible)
-            .scrollIndicators(.hidden)
-            .onChange(of: visible) { _, _ in Haptics.tap() }
         }
     }
 
@@ -140,31 +186,38 @@ struct CardDeckView: View {
     }
 }
 
-/// A playing card with two faces that turns over when tapped. Stock, edge and corner rank
-/// come from `CardFace` and `CardFlipper` — the same ones the quiz and the unlock gate use,
-/// so a card is one object wherever you meet it.
+/// A card being dragged: it follows the finger and leans the way it is going, pivoting about
+/// its bottom edge the way a card pulled off a stack actually does.
+private struct HeldCard: ViewModifier {
+    let offset: CGSize
+
+    func body(content: Content) -> some View {
+        content
+            .rotationEffect(.degrees(Double(offset.width / 22)), anchor: .bottom)
+            .offset(offset)
+    }
+}
+
+/// A playing card with two faces. Stock, edge and corner rank come from `CardFace` and
+/// `CardFlipper` — the same ones the quiz and the unlock gate use, so a card is one object
+/// wherever you meet it.
 private struct FlipCard: View {
     let card: Card
     let isFlipped: Bool
-    let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            // The caller animates `isFlipped`; `CardFlipper` is animatable on this number,
-            // so it still gets every value in between.
-            CardFlipper(turn: isFlipped ? 1 : 0) { index in
-                if index == 0 {
-                    face(card.prompt, rank: "Q", tint: Brand.chips, hint: "Tap to reveal")
-                } else {
-                    face(card.answer, rank: "A", tint: Brand.gold, hint: "Answer")
-                }
+        CardFlipper(turn: isFlipped ? 1 : 0) { index in
+            if index == 0 {
+                face(card.prompt, rank: "Q", tint: Brand.chips, hint: "Tap to reveal")
+            } else {
+                face(card.answer, rank: "A", tint: Brand.gold, hint: "Answer")
             }
         }
-        .buttonStyle(.plain)
-        .breathing(isFlipped ? 0.6 : 1, period: 3.1)
+        .contentShape(Rectangle())
         .accessibilityElement()
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(isFlipped ? card.answer : card.prompt)
-        .accessibilityHint("Tap to turn the card over")
+        .accessibilityHint("Tap to turn the card over, swipe for the next one")
     }
 
     private func face(_ text: String, rank: String, tint: Color, hint: String) -> some View {
@@ -187,6 +240,7 @@ private struct FlipCard: View {
         }
     }
 }
+
 
 /// The page after the last card — the feed needs an ending, and shuffling again was the
 /// one thing the old screen's toolbar did that scrolling doesn't replace.

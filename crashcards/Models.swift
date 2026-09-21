@@ -106,14 +106,6 @@ enum ModeUnavailable {
         }
     }
 
-    var symbol: String {
-        switch self {
-        case .noSetsSelected: return "square.dashed"
-        case .noCards:        return "tray"
-        case .noQuestions:    return "checklist.unchecked"
-        }
-    }
-
     var message: String {
         switch self {
         case .noSetsSelected:

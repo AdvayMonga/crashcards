@@ -5,58 +5,64 @@ import SwiftUI
 struct QuizView: View {
     @State var session: StudySession
     @Environment(FlagStore.self) private var flags
-    @Environment(\.dismiss) private var dismiss
+    let onClose: () -> Void
 
     @State private var picked: Choice?
     @State private var flagging = false
+    /// Bumped on every wrong answer; the screen shakes once each time it changes.
+    @State private var misses = 0
     /// Held so a dismissed or restarted session can't be advanced by the previous one's timer.
     @State private var advance: Task<Void, Never>?
 
     var body: some View {
         ZStack {
-            Brand.canvas.ignoresSafeArea()
+            TableBackground()
 
-            if session.isFinished {
-                ScoreCard(session: session, onReview: review, onRestart: restart, onDone: { dismiss() })
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else if let card = session.current {
-                question(card)
-                    .id(session.position)   // a new question animates in as its own view
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    ))
+            Group {
+                if session.isFinished {
+                    ScoreCard(session: session, onReview: review,
+                              onRestart: restart, onDone: onClose)
+                } else if let card = session.current {
+                    question(card)
+                        .id(session.position)   // a new question is dealt as its own view
+                        .transition(.dealtCard)
+                }
+            }
+            .shake(on: misses)
+
+            if flagging {
+                CrashDialog(title: "Flag this card",
+                            message: session.current?.prompt,
+                            onCancel: { flagging = false }) {
+                    FlagOptions(card: session.current) { flagging = false }
+                }
+                .zIndex(1)
             }
         }
-        .animation(.spring(response: 0.42, dampingFraction: 0.85), value: session.position)
-        .animation(.spring(response: 0.42, dampingFraction: 0.85), value: session.isFinished)
+        .animation(Motion.deal, value: session.position)
+        .animation(Motion.deal, value: session.isFinished)
+        .animation(Motion.pop, value: flagging)
         .safeAreaInset(edge: .top) { header }
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)   // studying is full-screen
         .onDisappear { advance?.cancel() }
-        .confirmationDialog("Flag this card", isPresented: $flagging, titleVisibility: .visible) {
-            FlagOptions(card: session.current)
-        } message: {
-            if let card = session.current { Text(card.prompt) }
-        }
     }
 
     private func question(_ card: Card) -> some View {
-        VStack(spacing: 24) {
-            Text(card.prompt)
-                .font(.brandCard)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 36)
-                .background(
-                    RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                        .fill(Brand.surface)
-                        .shadow(color: .black.opacity(0.05), radius: 14, y: 6)
-                )
+        VStack(spacing: 22) {
+            Spacer(minLength: 0)
+            CardFace(tint: Brand.chips) {
+                Text(card.prompt)
+                    .font(.brandCard)
+                    .foregroundStyle(Brand.cardInk)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.6)
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 34)
+                CardIndex(text: "?", tint: Brand.chips)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .breathing(0.7, period: 3.3)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 0)
 
             // Answers sit low, where your thumb already is.
             VStack(spacing: 12) {
@@ -65,7 +71,7 @@ struct QuizView: View {
                 }
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 28)
     }
@@ -80,27 +86,27 @@ struct QuizView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            HeaderChip(symbol: "xmark", name: "Close", tint: .secondary) { dismiss() }
+        HStack(spacing: 12) {
+            HeaderChip(glyph: .close, name: "Close") { onClose() }
 
             ProgressTrack(value: session.position, total: session.total,
                           label: "Question \(min(session.position + 1, session.total)) of \(session.total)")
 
             Text("\(session.correctCount)")
-                .font(.brandLabel)
-                .foregroundStyle(Brand.correct)
-                .frame(minWidth: 28)
+                .font(.brandNumber)
+                .foregroundStyle(Brand.green)
+                .frame(minWidth: 30)
+                .contentTransition(.numericText())
                 .accessibilityLabel("\(session.correctCount) correct so far")
 
             let flagged = flags.reason(for: session.current) != nil
-            HeaderChip(symbol: flagged ? "flag.fill" : "flag",
+            HeaderChip(glyph: flagged ? .flagFilled : .flag,
                        name: flagged ? "Flagged" : "Flag this card",
-                       tint: flagged ? Brand.accent : .secondary) { flagging = true }
+                       tint: flagged ? Brand.gold : Brand.inkDim) { flagging = true }
                 .disabled(session.current == nil || flags.isLocked)
         }
         .padding(.horizontal, 18)
-        .padding(.bottom, 10)
-        .background(Brand.canvas)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Answering
@@ -113,7 +119,12 @@ struct QuizView: View {
         guard picked == nil else { return }
         picked = choice
         session.record(choice.isCorrect)
-        choice.isCorrect ? Haptics.correct() : Haptics.wrong()
+        if choice.isCorrect {
+            Haptics.correct()
+        } else {
+            Haptics.wrong()
+            misses += 1
+        }
 
         advance?.cancel()
         advance = Task { @MainActor in
@@ -137,19 +148,20 @@ struct QuizView: View {
     }
 }
 
-/// One answer. Grows very slightly under the finger, then turns green or red once judged.
+/// One answer. Presses into its ledge like every other control, then lights up green or red.
 private struct OptionRow: View {
     let choice: Choice
     let picked: Choice?
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var judged: Bool { picked != nil }
     private var isPicked: Bool { picked == choice }
 
     private var tint: Color? {
         guard judged else { return nil }
-        if choice.isCorrect { return Brand.correct }
-        return isPicked ? Brand.wrong : nil
+        if choice.isCorrect { return Brand.green }
+        return isPicked ? Brand.mult : nil
     }
 
     var body: some View {
@@ -159,33 +171,28 @@ private struct OptionRow: View {
                     .font(.brandBody)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if let icon {
-                    Image(systemName: icon).font(.brand(17, .bold))
+                if let glyph {
+                    PixelIcon(glyph: glyph, size: 18, color: Brand.outline)
                 }
             }
-            .foregroundStyle(tint ?? .primary)
-            .padding(.vertical, 17)
+            .foregroundStyle(tint == nil ? Brand.ink : Brand.outline)
+            .padding(.vertical, 16)
             .padding(.horizontal, 18)
-            .background(
-                RoundedRectangle(cornerRadius: Brand.controlRadius, style: .continuous)
-                    .fill(tint?.opacity(0.13) ?? Brand.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Brand.controlRadius, style: .continuous)
-                    .strokeBorder(tint ?? Brand.hairline, lineWidth: tint == nil ? 1 : 2)
-            )
-            .opacity(judged && tint == nil ? 0.45 : 1)
+            .slab(tint ?? Brand.surface, lift: judged && tint != nil ? 0 : Brand.ledge,
+                  highlight: tint == nil ? 0.08 : 0.22)
+            .opacity(judged && tint == nil ? 0.4 : 1)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .disabled(judged)
-        .scaleEffect(isPicked && judged ? 1.02 : 1)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: picked)
+        // The chosen answer jumps when it lands; the other correct one just lights up.
+        .scaleEffect(isPicked && judged ? 1.05 : 1)
+        .animation(Motion.pop(reduceMotion), value: picked)
     }
 
-    private var icon: String? {
+    private var glyph: PixelGlyph? {
         guard judged else { return nil }
-        if choice.isCorrect { return "checkmark.circle.fill" }
-        return isPicked ? "xmark.circle.fill" : nil
+        if choice.isCorrect { return .check }
+        return isPicked ? .close : nil
     }
 }
 
@@ -196,24 +203,37 @@ private struct ScoreCard: View {
     let onRestart: () -> Void
     let onDone: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Counts up to `score` on arrival, the way a chip total does.
+    @State private var shown = 0
+
     private var missed: [Card] { session.missedCards }
     private var score: Int {
         guard session.total > 0 else { return 0 }
         return Int((Double(session.correctCount) / Double(session.total) * 100).rounded())
     }
+    private var tint: Color {
+        if score >= 80 { return Brand.green }
+        return score >= 50 ? Brand.gold : Brand.mult
+    }
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 14) {
             Spacer()
-            Text("\(score)%")
-                .font(.brand(64, .bold))
-                .foregroundStyle(Brand.accent)
-                .contentTransition(.numericText())
+
+            Text("\(shown)%")
+                .font(.pixel(72, relativeTo: .largeTitle))
+                .foregroundStyle(tint)
+                .shadow(color: Brand.outline, radius: 0, x: 3, y: 4)
+                .scaleEffect(shown == score && score > 0 ? 1 : 0.9)
+                .animation(Motion.pop(reduceMotion), value: shown == score)
+
             Text(session.isEmpty
                  ? "No questions in these sets."
                  : "\(session.correctCount) of \(session.total) right")
-                .font(.brandBody)
-                .foregroundStyle(.secondary)
+                .font(.brandLabel)
+                .foregroundStyle(Brand.inkDim)
+
             Spacer()
 
             VStack(spacing: 12) {
@@ -226,11 +246,23 @@ private struct ScoreCard: View {
                         .buttonStyle(.soft)
                 }
                 Button("Done") { onDone() }
-                    .buttonStyle(CrashButton(kind: .ghost))
+                    .buttonStyle(CrashButton(kind: .ghost, tint: Brand.inkDim))
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 24)
-        .onAppear { score >= 50 ? Haptics.correct() : Haptics.knock() }
+        .padding(.horizontal, 26)
+        .padding(.bottom, 26)
+        .task { await rollUp() }
+    }
+
+    /// Ticks the number up rather than snapping it, so the result lands as an event.
+    private func rollUp() async {
+        score >= 50 ? Haptics.correct() : Haptics.knock()
+        guard !reduceMotion, score > 0 else { shown = score; return }
+        let step = max(1, score / 24)
+        while shown < score {
+            shown = min(score, shown + step)
+            Haptics.tap()
+            try? await Task.sleep(for: .milliseconds(28))
+        }
     }
 }

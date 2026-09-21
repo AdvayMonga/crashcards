@@ -1,160 +1,246 @@
 import SwiftUI
 
-/// Flashcards: a vertical feed of cards. Scroll up for the next one, tap to flip.
+/// Flashcards: a stack of cards on the table. Swipe the top one away for the next, tap to
+/// flip it over.
 ///
 /// No grading and no buttons — this mode is for going through a deck, not scoring yourself.
 /// Quiz mode is where answers are judged.
 struct CardDeckView: View {
     @Environment(FlagStore.self) private var flags
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dismiss) private var dismiss
+    let onClose: () -> Void
 
     /// Shuffled once, on entry. The library re-scans on every foreground, so holding the
     /// cards the parent hands us would swap the deck out from under a session in progress.
     @State private var deck: [Card]
-    @State private var visible: Int?
+    /// How far into the deck we are. Everything before this has been thrown.
+    @State private var position = 0
     @State private var flagging = false
-    /// Which cards are face-up, by card identity. Held here rather than inside `FlipCard`
-    /// because the feed identifies rows by position: after a shuffle the view at a given
-    /// slot is reused, and per-view state would carry over onto a different card.
+    /// Which cards are face-up, by card identity rather than by slot, so a shuffle can't
+    /// hand you a card that is already turned over.
     @State private var flipped: Set<Card.ID> = []
+    /// Where the finger has dragged the top card. Zero whenever nothing is being held.
+    @State private var held: CGSize = .zero
 
-    init(cards: [Card]) {
+    /// A playing card's proportions, the margin it keeps from the screen edge, and how far
+    /// each card behind the top one is offset — which is all you ever see of them.
+    private static let aspect: CGFloat = 0.72
+    private static let margin: CGFloat = 26
+    private static let step: CGFloat = 13
+    /// How far the top card travels before letting go throws it rather than returns it.
+    private static let throwDistance: CGFloat = 96
+
+    init(cards: [Card], onClose: @escaping () -> Void) {
         _deck = State(initialValue: cards.shuffled())
+        self.onClose = onClose
     }
 
-    private var position: Int { visible ?? 0 }
     private var currentCard: Card? {
         guard deck.indices.contains(position) else { return nil }
         return deck[position]
     }
 
+    /// The top card and the two behind it, nearest last so the ZStack puts it on top.
+    private var visible: [(depth: Int, card: Card)] {
+        (position..<min(position + 3, deck.count))
+            .map { (depth: $0 - position, card: deck[$0]) }
+            .reversed()
+    }
+
     var body: some View {
         ZStack {
-            Brand.canvas.ignoresSafeArea()
+            TableBackground()
 
             if deck.isEmpty {
-                EmptyDeck(dismiss: dismiss)
+                EmptyState(glyph: .cards,
+                           title: "Nothing to study",
+                           message: "The sets you picked have no cards in them yet.") {
+                    Button("Back to sets") { onClose() }
+                        .buttonStyle(CrashButton(fullWidth: false))
+                }
+            } else if position >= deck.count {
+                DeckEnd(count: deck.count, onShuffle: shuffle, onDone: onClose)
+                    .padding(.horizontal, 26)
+                    .transition(.dealIn)
             } else {
-                feed
+                stack
+            }
+
+            if flagging {
+                CrashDialog(title: "Flag this card",
+                            message: currentCard?.prompt,
+                            onCancel: { flagging = false }) {
+                    FlagOptions(card: currentCard) { flagging = false }
+                }
+                .zIndex(2)
             }
         }
         .safeAreaInset(edge: .top) { header }
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)   // studying is full-screen
-        .confirmationDialog("Flag this card", isPresented: $flagging, titleVisibility: .visible) {
-            FlagOptions(card: currentCard)
-        } message: {
-            if let currentCard { Text(currentCard.prompt) }
+        .animation(Motion.pop, value: flagging)
+    }
+
+    // MARK: - The stack
+
+    private var stack: some View {
+        GeometryReader { geometry in
+            let room = geometry.size
+            let width = min(room.width - Self.margin * 2, (room.height - 40) * Self.aspect)
+
+            ZStack {
+                ForEach(visible, id: \.card.id) { entry in
+                    let depth = CGFloat(entry.depth)
+                    let top = entry.depth == 0
+
+                    FlipCard(card: entry.card, isFlipped: flipped.contains(entry.card.id))
+                        .frame(width: width, height: width / Self.aspect)
+                        // The cards behind sit down and to the right, so all that shows of
+                        // them is an edge. They are still whole cards, so the one that comes
+                        // up next is already right rather than popping into place.
+                        .scaleEffect(top ? 1 : 1 - depth * 0.035, anchor: .top)
+                        .offset(x: top ? 0 : depth * Self.step,
+                                y: top ? 0 : depth * Self.step)
+                        .rotationEffect(.degrees(top ? 0 : Double(depth) * 1.6), anchor: .top)
+                        .modifier(HeldCard(offset: top ? held : .zero))
+                        .breathing(top && !flipped.contains(entry.card.id) ? 0.8 : 0, period: 3.4)
+                        .zIndex(Double(-entry.depth))
+                        .allowsHitTesting(top)
+                        .accessibilityHidden(!top)
+                        .onTapGesture { toggleFlip(entry.card) }
+                        .gesture(top ? swipe : nil)
+                }
+            }
+            .frame(width: room.width, height: room.height)
+            .animation(Motion.settle, value: position)
         }
+    }
+
+    /// Drag the top card and it follows; let go past `throwDistance`, or with enough flick
+    /// behind it, and it carries on off the table instead of settling back.
+    private var swipe: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { held = $0.translation }
+            .onEnded { value in
+                let thrown = abs(value.translation.width) > Self.throwDistance
+                    || abs(value.predictedEndTranslation.width) > 240
+                if thrown {
+                    throwAway(toward: value.translation.width < 0 ? -1 : 1)
+                } else {
+                    withAnimation(Motion.pop(reduceMotion)) { held = .zero }
+                }
+            }
+    }
+
+    private func throwAway(toward direction: CGFloat) {
+        Haptics.knock()
+        guard !reduceMotion else {
+            advance()
+            return
+        }
+        withAnimation(.easeOut(duration: 0.24)) {
+            held = CGSize(width: direction * 900, height: held.height - 60)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.24))
+            advance()
+        }
+    }
+
+    /// Both halves in one update: the thrown card leaves the stack and the hand resets, so
+    /// the card coming up is never briefly drawn where the last one was flung.
+    private func advance() {
+        position += 1
+        held = .zero
     }
 
     private func shuffle() {
-        Haptics.knock()
+        Haptics.thud()
         deck.shuffle()
         flipped.removeAll()
-        visible = 0
-    }
-
-    /// One card per screenful, snapping like a reel.
-    private var feed: some View {
-        ScrollView(.vertical) {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(deck.enumerated()), id: \.offset) { index, card in
-                    FlipCard(card: card, reduceMotion: reduceMotion,
-                             isFlipped: flipped.contains(card.id)) { toggleFlip(card) }
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .containerRelativeFrame(.vertical)
-                        .id(index)
-                }
-                DeckEnd(count: deck.count, onShuffle: shuffle, onDone: { dismiss() })
-                    .padding(.horizontal, 18)
-                    .containerRelativeFrame(.vertical)
-                    .id(deck.count)
-            }
-            .scrollTargetLayout()
-        }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $visible)
-        .scrollIndicators(.hidden)
-        .onChange(of: visible) { _, _ in Haptics.tap() }
+        held = .zero
+        position = 0
     }
 
     private func toggleFlip(_ card: Card) {
         Haptics.knock()
-        if flipped.contains(card.id) { flipped.remove(card.id) } else { flipped.insert(card.id) }
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.22)
+                                   : .spring(response: 0.46, dampingFraction: 0.68)) {
+            if flipped.contains(card.id) { flipped.remove(card.id) } else { flipped.insert(card.id) }
+        }
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            HeaderChip(symbol: "xmark", name: "Close", tint: .secondary) { dismiss() }
+        HStack(spacing: 12) {
+            HeaderChip(glyph: .close, name: "Close") { onClose() }
 
             ProgressTrack(value: min(position + 1, deck.count), total: deck.count,
                           label: "Card \(min(position + 1, deck.count)) of \(deck.count)")
 
             let flagged = flags.reason(for: currentCard) != nil
-            HeaderChip(symbol: flagged ? "flag.fill" : "flag",
+            HeaderChip(glyph: flagged ? .flagFilled : .flag,
                        name: flagged ? "Flagged" : "Flag this card",
-                       tint: flagged ? Brand.accent : .secondary) { flagging = true }
+                       tint: flagged ? Brand.gold : Brand.inkDim) { flagging = true }
                 .disabled(currentCard == nil || flags.isLocked)
         }
         .padding(.horizontal, 18)
-        .padding(.bottom, 10)
-        .background(Brand.canvas)
+        .padding(.bottom, 8)
     }
 }
 
-/// A card with two faces that turns over when tapped.
+/// A card being dragged: it follows the finger and leans the way it is going, pivoting about
+/// its bottom edge the way a card pulled off a stack actually does.
+private struct HeldCard: ViewModifier {
+    let offset: CGSize
+
+    func body(content: Content) -> some View {
+        content
+            .rotationEffect(.degrees(Double(offset.width / 22)), anchor: .bottom)
+            .offset(offset)
+    }
+}
+
+/// A playing card with two faces. Stock, edge and corner rank come from `CardFace` and
+/// `CardFlipper` — the same ones the quiz and the unlock gate use, so a card is one object
+/// wherever you meet it.
 private struct FlipCard: View {
     let card: Card
-    let reduceMotion: Bool
     let isFlipped: Bool
-    let toggle: () -> Void
 
     var body: some View {
-        ZStack {
-            face(card.prompt, muted: false)
-                .opacity(isFlipped ? 0 : 1)
-            face(card.answer, muted: true)
-                .rotation3DEffect(.degrees(reduceMotion ? 0 : 180), axis: (x: 1, y: 0, z: 0))
-                .opacity(isFlipped ? 1 : 0)
+        CardFlipper(turn: isFlipped ? 1 : 0) { index in
+            if index == 0 {
+                face(card.prompt, rank: "Q", tint: Brand.chips, hint: "Tap to reveal")
+            } else {
+                face(card.answer, rank: "A", tint: Brand.gold, hint: "Answer")
+            }
         }
-        .rotation3DEffect(.degrees(isFlipped && !reduceMotion ? 180 : 0),
-                          axis: (x: 1, y: 0, z: 0), perspective: 0.35)
-        .animation(reduceMotion ? .easeInOut(duration: 0.2)
-                                : .spring(response: 0.45, dampingFraction: 0.78),
-                   value: isFlipped)
         .contentShape(Rectangle())
-        .onTapGesture { toggle() }
         .accessibilityElement()
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(isFlipped ? card.answer : card.prompt)
-        .accessibilityHint("Tap to turn the card over")
+        .accessibilityHint("Tap to turn the card over, swipe for the next one")
     }
 
-    private func face(_ text: String, muted: Bool) -> some View {
-        VStack(spacing: 18) {
-            Spacer(minLength: 0)
-            Text(text)
-                .font(.brandCard)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(muted ? Brand.accent : Color.primary)
-                .padding(.horizontal, 28)
-            Spacer(minLength: 0)
-            Text(muted ? "Answer" : "Tap to reveal")
-                .font(.brandCaption)
-                .foregroundStyle(.tertiary)
-                .padding(.bottom, 26)
+    private func face(_ text: String, rank: String, tint: Color, hint: String) -> some View {
+        CardFace(tint: tint) {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Text(text)
+                    .font(.brandCard)
+                    .foregroundStyle(Brand.cardInk)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.55)
+                    .padding(.horizontal, 30)
+                Spacer(minLength: 0)
+                Text(hint)
+                    .font(.brandCaption)
+                    .foregroundStyle(Brand.cardInk.opacity(0.45))
+                    .padding(.bottom, 24)
+            }
+            CardIndex(text: rank, tint: tint)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous)
-                .fill(Brand.surface)
-                .shadow(color: .black.opacity(0.06), radius: 18, y: 8)
-        )
     }
 }
+
 
 /// The page after the last card — the feed needs an ending, and shuffling again was the
 /// one thing the old screen's toolbar did that scrolling doesn't replace.
@@ -164,78 +250,53 @@ private struct DeckEnd: View {
     let onDone: () -> Void
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 14) {
             Spacer()
+            PixelIcon(glyph: .cards, size: 54, color: Brand.gold)
+                .padding(22)
+                .slab(Brand.surface, radius: Brand.cardRadius)
+                .breathing(1.4, period: 3.4)
             Text("That's the deck")
                 .font(.brandTitle)
+                .foregroundStyle(Brand.ink)
             Text(count == 1 ? "1 card" : "\(count) cards")
-                .font(.brandBody)
-                .foregroundStyle(.secondary)
+                .font(.brandLabel)
+                .foregroundStyle(Brand.inkDim)
             Spacer()
             Button("Shuffle again") { onShuffle() }
                 .buttonStyle(.solid)
             Button("Done") { onDone() }
                 .buttonStyle(.soft)
         }
-        .padding(.bottom, 30)
-    }
-}
-
-private struct EmptyDeck: View {
-    let dismiss: DismissAction
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Nothing to study")
-                .font(.brandTitle)
-            Text("The sets you picked have no cards in them yet.")
-                .font(.brandBody)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("Back to sets") { dismiss() }
-                .buttonStyle(CrashButton(fullWidth: false))
-        }
-        .padding(32)
-    }
-}
-
-/// A round header button. 44pt of target under a 38pt circle, and a name for VoiceOver.
-struct HeaderChip: View {
-    let symbol: String
-    let name: String
-    var tint: Color = .secondary
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            Haptics.tap()
-            action()
-        } label: {
-            Image(systemName: symbol)
-                .font(.brand(15, .bold))
-                .foregroundStyle(tint)
-                .frame(width: 38, height: 38)
-                .background(Circle().fill(Brand.surface))
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(name)
+        .padding(.bottom, 36)
     }
 }
 
 /// Shared by both study modes: one tap per reason, re-flagging changes the reason.
 struct FlagOptions: View {
     let card: Card?
+    let onDone: () -> Void
     @Environment(FlagStore.self) private var flags
 
     var body: some View {
         if let card {
-            ForEach(FlagReason.allCases) { reason in
-                Button(reason.label) { flags.flag(card, as: reason) }
-            }
-            if flags.reason(for: card) != nil {
-                Button("Unflag", role: .destructive) { flags.unflag(card) }
+            VStack(spacing: 10) {
+                ForEach(FlagReason.allCases) { reason in
+                    Button(reason.label) {
+                        Haptics.tap()
+                        flags.flag(card, as: reason)
+                        onDone()
+                    }
+                    .buttonStyle(.soft(Brand.gold))
+                }
+                if flags.reason(for: card) != nil {
+                    Button("Unflag") {
+                        Haptics.tap()
+                        flags.unflag(card)
+                        onDone()
+                    }
+                    .buttonStyle(.soft(Brand.mult))
+                }
             }
         }
     }

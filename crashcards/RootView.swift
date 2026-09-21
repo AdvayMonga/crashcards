@@ -7,6 +7,9 @@ import SwiftUI
 /// can interrupt that arrival: a `crashcards://gate?app=…` link (a Shortcuts automation
 /// reacting to you opening a blocked app), which shows the questions and hands you back to
 /// that app; and text waiting from the share extension, which opens the importer.
+///
+/// Nothing here is a `TabView`, a sheet or an alert: the tabs cross-fade rather than slide,
+/// and everything that covers the screen is a layer in this one `ZStack`.
 struct RootView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(FlagStore.self) private var flags
@@ -32,57 +35,77 @@ struct RootView: View {
         let title: String
     }
 
-    private enum Tab { case study, focus, settings }
+    private enum Tab: Hashable { case study, focus, settings }
 
     var body: some View {
-        tabs
-            .task {
-                reload()
-                collectShare()
-            }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    reload()
-                    collectShare()
-                    offerUnlock()
+        ZStack {
+            TableBackground()
+
+            tabs
+                .safeAreaInset(edge: .bottom) { tabBar }
+
+            if let request = prompt {
+                UnlockView(cards: library.quizCards, manager: blocking, target: request.target) {
+                    prompt = nil
                 }
+                .transition(.dealIn)
+                .zIndex(2)
             }
-            .onOpenURL { url in
-                guard GatedApps.isGate(url) else { return }
-                openGate(for: GatedApps.target(of: url))
-            }
-            .fullScreenCover(item: $prompt) { request in
-                NavigationStack {
-                    UnlockView(cards: library.quizCards, manager: blocking, target: request.target)
-                }
-            }
-            .alert("Couldn't write \(FlagStore.filename)",
-                   isPresented: .init(get: { flags.writeError != nil },
-                                      set: { if !$0 { flags.writeError = nil } })) {
-                Button("OK") { flags.writeError = nil }
-            } message: {
-                Text(flags.writeError ?? "")
-            }
-            .sheet(item: $share, onDismiss: finishShare) { pending in
-                ImportSetView(initialText: pending.text, initialTitle: pending.title) {
+
+            if let pending = share {
+                ImportSetView(initialText: pending.text, initialTitle: pending.title,
+                              onClose: finishShare) {
                     library.reload()
                 }
                 .environment(library)
+                .zIndex(3)
             }
+
+            if let message = flags.writeError {
+                CrashAlert(title: "Couldn't write \(FlagStore.filename)",
+                           message: message) { flags.writeError = nil }
+                    .zIndex(4)
+            }
+        }
+        .animation(Motion.deal, value: prompt?.id)
+        .animation(Motion.deal, value: share?.id)
+        .animation(Motion.pop, value: flags.writeError)
+        .task {
+            reload()
+            collectShare()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                reload()
+                collectShare()
+                offerUnlock()
+            }
+        }
+        .onOpenURL { url in
+            guard GatedApps.isGate(url) else { return }
+            openGate(for: GatedApps.target(of: url))
+        }
     }
 
-    private var tabs: some View {
-        TabView(selection: $tab) {
-            SetListView()
-                .tabItem { Label("Study", systemImage: "rectangle.on.rectangle") }
-                .tag(Tab.study)
-            FocusView()
-                .tabItem { Label("Focus", systemImage: "lock") }
-                .tag(Tab.focus)
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-                .tag(Tab.settings)
+    /// Tabs cross-fade in place. A horizontal slide between them is the stock motion this
+    /// app is trying not to have.
+    @ViewBuilder private var tabs: some View {
+        ZStack {
+            switch tab {
+            case .study: SetListView()
+            case .focus: FocusView()
+            case .settings: SettingsView()
+            }
         }
+        .transition(.opacity.combined(with: .scale(scale: 0.985)))
+        .animation(Motion.snap, value: tab)
+    }
+
+    private var tabBar: some View {
+        CrashTabBar(tabs: [(.study, .cards, "Study"),
+                           (.focus, .lockClosed, "Focus"),
+                           (.settings, .gear, "Settings")],
+                    selection: $tab)
     }
 
     /// Re-read the folders and Flagged.md, so edits made in Obsidian show up here.
@@ -105,6 +128,7 @@ struct RootView: View {
     private func finishShare() {
         if let collectedShareFile { SharedInbox.clear(collectedShareFile) }
         collectedShareFile = nil
+        share = nil
         collectShare()
     }
 
@@ -118,7 +142,7 @@ struct RootView: View {
 
     /// Inside an unlock window there's nothing left to earn, so hand the user straight on.
     private func openGate(for app: GatedApp?) {
-        // Mid-import: don't swap a sheet for a cover in one update, which drops the cover.
+        // Mid-import: don't swap one full-screen layer for another in a single update.
         // Nothing is lost — the shield is still up, and Focus has the same questions.
         guard share == nil else { return }
 

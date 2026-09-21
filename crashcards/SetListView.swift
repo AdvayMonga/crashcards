@@ -9,10 +9,12 @@ struct SetListView: View {
     @Environment(FlagStore.self) private var flags
     @State private var selected: Set<String> = Prefs.selectedSetIDs
     @State private var studyMode: StudyMode?
-    @State private var studyingVoice = false
     @State private var importingFolder = false
     @State private var importingSet = false
     @State private var showingProblems = false
+    @State private var renaming: FlashcardSet?
+    @State private var deleting: FlashcardSet?
+    @State private var newTitle = ""
 
     private var selectedSets: [FlashcardSet] {
         library.sets.filter { selected.contains($0.id) }
@@ -31,11 +33,6 @@ struct SetListView: View {
             .screenLayer(item: $studyMode) { mode in
                 destination(for: mode)
             }
-            .screenLayer(isPresented: $studyingVoice) {
-                studyScreen(.voice) {
-                    VoiceStudyView(session: StudySession(cards: $0)) { studyingVoice = false }
-                }
-            }
             .screenLayer(isPresented: $showingProblems) {
                 FileProblemsView { showingProblems = false }
                     .environment(library)
@@ -45,7 +42,16 @@ struct SetListView: View {
                 ImportSetView(onClose: { importingSet = false }) { library.reload() }
                     .environment(library)
             }
+            .overlay { setDialogs }
+            .animation(Motion.pop, value: renaming?.id)
+            .animation(Motion.pop, value: deleting?.id)
             .onChange(of: library.sets.map(\.id)) { _, ids in
+                // Only prune against a scan that actually saw everything. A folder that is
+                // offline, moved, or not yet downloaded from iCloud is reported as a
+                // recoverable folderError and its sets are simply absent — pruning on that
+                // would clear the selection permanently, since the next change writes it
+                // straight to Prefs.
+                guard library.folderErrors.isEmpty, library.loadError == nil else { return }
                 selected = selected.intersection(ids)   // forget sets that no longer exist
             }
             .onChange(of: selected) { _, new in
@@ -63,29 +69,50 @@ struct SetListView: View {
 
     @ViewBuilder
     private func destination(for mode: StudyMode) -> some View {
-        studyScreen(mode) { cards in
+        if let reason = mode.unavailableReason(for: selectedSets) {
+            ModeUnavailableView(mode: mode, reason: reason) { studyMode = nil }
+        } else {
+            let cards = mode.usableCards(in: selectedSets)
             switch mode {
             case .flashcards:
                 CardDeckView(cards: cards) { studyMode = nil }
             case .quiz:
                 QuizView(session: StudySession(cards: cards)) { studyMode = nil }
-            case .voice:
-                VoiceStudyView(session: StudySession(cards: cards)) { studyMode = nil }
             }
         }
     }
 
-    /// A mode is only entered with cards it can actually present; otherwise it explains why.
-    @ViewBuilder
-    private func studyScreen<V: View>(_ mode: StudyMode,
-                                      @ViewBuilder study: ([Card]) -> V) -> some View {
-        if let reason = mode.unavailableReason(for: selectedSets) {
-            ModeUnavailableView(mode: mode, reason: reason) {
-                studyMode = nil
-                studyingVoice = false
+    // MARK: - Renaming and deleting
+
+    /// Only sets the app owns can be renamed or deleted — a file in an attached folder is
+    /// the user's, and the app never edits those.
+    @ViewBuilder private var setDialogs: some View {
+        if let set = renaming {
+            CrashModal(title: "Rename set",
+                       confirm: (label: "Rename",
+                                 enabled: !newTitle.trimmingCharacters(in: .whitespaces).isEmpty,
+                                 action: {
+                                     library.renameSet(set, to: newTitle)
+                                     renaming = nil
+                                 }),
+                       onCancel: { renaming = nil }) {
+                Panel(footnote: "Renames the file in the app's own library.") {
+                    PanelRow(first: true) {
+                        CrashField(placeholder: "Name", text: $newTitle)
+                    }
+                }
             }
-        } else {
-            study(mode.usableCards(in: selectedSets))
+        } else if let set = deleting {
+            CrashDialog(title: "Delete this set?",
+                        message: "“\(set.title)” is removed from the app's library. This can't be undone.",
+                        onCancel: { deleting = nil }) {
+                Button("Delete") {
+                    Haptics.wrong()
+                    library.deleteSet(set)
+                    deleting = nil
+                }
+                .buttonStyle(.solid(Brand.mult))
+            }
         }
     }
 
@@ -119,6 +146,7 @@ struct SetListView: View {
                     ForEach(library.sets) { set in
                         Button { toggle(set.id) } label: { row(for: set) }
                             .buttonStyle(.pressable)
+                            .contextMenu { actions(for: set) }
                     }
                 }
                 .padding(.horizontal, 18)
@@ -126,6 +154,18 @@ struct SetListView: View {
                 .padding(.bottom, 14)
             }
             .scrollIndicators(.hidden)
+        }
+    }
+
+    @ViewBuilder private func actions(for set: FlashcardSet) -> some View {
+        if set.isLocal {
+            Button {
+                newTitle = set.title
+                renaming = set
+            } label: { Label("Rename", systemImage: "pencil") }
+            Button(role: .destructive) { deleting = set } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 
@@ -235,11 +275,6 @@ struct SetListView: View {
             if !library.sets.isEmpty {
                 Button(allSelected ? "Clear" : "All") { toggleAll() }
                     .buttonStyle(CrashButton(kind: .ghost, tint: Brand.inkDim, fullWidth: false))
-                HeaderChip(glyph: .mic, name: "Voice study", tint: Brand.chips) {
-                    studyingVoice = true
-                }
-                .disabled(selectedSets.isEmpty)
-                .opacity(selectedSets.isEmpty ? 0.4 : 1)
             }
             HeaderChip(glyph: .plus, name: "New set", tint: Brand.gold) {
                 importingSet = true

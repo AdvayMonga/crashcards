@@ -58,6 +58,29 @@ final class LibraryStore {
         importError = error.localizedDescription
     }
 
+    /// Delete a set the app owns. Sets read from an attached folder are never touched.
+    func deleteSet(_ set: FlashcardSet) {
+        guard set.isLocal, let url = set.fileURL else { return }
+        do {
+            try LocalLibrary.delete(url)
+            reload()
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    /// Rename a set the app owns.
+    func renameSet(_ set: FlashcardSet, to newTitle: String) {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard set.isLocal, let url = set.fileURL, !trimmed.isEmpty else { return }
+        do {
+            try LocalLibrary.rename(url, to: trimmed)
+            reload()
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
     func removeFolder(at index: Int) {
         FolderAccess.removeFolder(at: index)
         reload()

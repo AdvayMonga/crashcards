@@ -20,6 +20,44 @@ import Testing
         #expect(parsed.issues.isEmpty)
     }
 
+    @Test func reportsAFenceThatNeverCloses() {
+        let parsed = MarkdownParser.parse(
+            """
+            # Deck
+
+            Alpha :: First letter
+
+            ```
+            Beta :: Second letter
+            Gamma :: Third letter
+            """,
+            filename: "fence.md"
+        )
+        // The cards below an open fence are still skipped — but no longer in silence.
+        #expect(parsed.set.cards.count == 1)
+        #expect(parsed.issues.contains { $0.kind == .unclosedFence })
+        #expect(parsed.issues.first { $0.kind == .unclosedFence }?.line == 5)
+    }
+
+    @Test func aClosedFenceIsSkippedWithoutComplaint() {
+        let parsed = MarkdownParser.parse(
+            """
+            # Deck
+
+            Alpha :: First letter
+
+            ```
+            std::cout
+            ```
+
+            Beta :: Second letter
+            """,
+            filename: "fence.md"
+        )
+        #expect(parsed.set.cards.count == 2)
+        #expect(parsed.issues.isEmpty)
+    }
+
     @Test func titleFallsBackToFilenameWithoutItsExtension() {
         for name in ["Spanish.md", "Spanish.txt", "Spanish.markdown", "Spanish.text"] {
             let parsed = MarkdownParser.parse("Hola :: Hello", filename: name)

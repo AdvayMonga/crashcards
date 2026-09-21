@@ -58,8 +58,9 @@ enum AppFileRead {
 /// local library is always scanned too, so no folder is required to use the app.
 ///
 /// Read-only by design: the *only* file this app ever writes is `Flagged.md`, in the first
-/// attached folder. `writeAppFile` refuses anything else, so a source deck can never be
-/// modified by the app.
+/// attached folder — or in the local library when no folder is attached, so flagging works
+/// on the folderless path too. `writeAppFile` refuses anything else, so a source deck can
+/// never be modified by the app.
 enum FolderAccess {
     private static let bookmarksKey = "flashcardsFolderBookmarks"
     private static var defaults: UserDefaults { .standard }
@@ -169,7 +170,7 @@ enum FolderAccess {
             load.fileIssues.append(FileIssues(id: url.path, filename: name, issues: parsed.issues))
         }
         guard !parsed.set.cards.isEmpty else { return }
-        load.sets.append(uniquelyIdentified(parsed.set, seen: &seen))
+        load.sets.append(uniquelyIdentified(parsed.set, at: url, seen: &seen))
     }
 
     /// Is `path` inside directory `parent`?
@@ -184,14 +185,15 @@ enum FolderAccess {
         return try? String(contentsOf: url, usedEncoding: &encoding)
     }
 
-    /// Filenames can collide across folders; give each set a unique id.
-    private static func uniquelyIdentified(_ set: FlashcardSet, seen: inout Set<String>) -> FlashcardSet {
+    /// Filenames can collide across folders; give each set a unique id, and remember the
+    /// file it came from so the app can act on the ones it owns.
+    private static func uniquelyIdentified(_ set: FlashcardSet, at url: URL,
+                                           seen: inout Set<String>) -> FlashcardSet {
         var uid = set.id
         var n = 2
         while seen.contains(uid) { uid = "\(set.id) (\(n))"; n += 1 }
         seen.insert(uid)
-        guard uid != set.id else { return set }
-        return FlashcardSet(id: uid, title: set.title, cards: set.cards)
+        return FlashcardSet(id: uid, title: set.title, cards: set.cards, fileURL: url)
     }
 
     /// Every readable set file under `folder`, or nil if the folder can't be enumerated.
@@ -223,13 +225,18 @@ enum FolderAccess {
         return url
     }
 
-    /// Read a file the app owns from the primary folder.
+    /// Where the app's own files live: the first attached folder, or the local library when
+    /// there isn't one. A folder is optional everywhere else in the app, so app files can't
+    /// require one either.
+    private static func appFileFolder() throws -> URL {
+        bookmarks().isEmpty ? LocalLibrary.directory : try primaryFolder()
+    }
+
+    /// Read a file the app owns.
     static func readAppFile(_ name: String) -> AppFileRead {
         let folder: URL
         do {
-            folder = try primaryFolder()
-        } catch FolderError.noFolder {
-            return .missing
+            folder = try appFileFolder()
         } catch {
             return .failure(error.localizedDescription)
         }
@@ -246,7 +253,7 @@ enum FolderAccess {
         }
     }
 
-    /// Write a file the app owns into the primary folder, atomically.
+    /// Write a file the app owns, atomically.
     ///
     /// Writes to a hidden temp file first and swaps it in, so a failure part-way through
     /// leaves the existing file intact rather than truncated.
@@ -254,7 +261,7 @@ enum FolderAccess {
         // The single point where this app can modify the user's folder. Keep it to one file.
         guard name == FlagStore.filename else { throw FolderError.notAppFile(name) }
 
-        let folder = try primaryFolder()
+        let folder = try appFileFolder()
         let scoped = folder.startAccessingSecurityScopedResource()
         defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
 

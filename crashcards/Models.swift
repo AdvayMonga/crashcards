@@ -50,6 +50,8 @@ struct FlashcardSet: Identifiable, Hashable {
     let id: String
     let title: String
     let cards: [Card]
+    /// Where the set was read from. Nil only for sets built in memory (imports, tests).
+    var fileURL: URL?
 
     var multipleChoiceCount: Int { cards.filter(\.isMultipleChoice).count }
     var flipCount: Int { cards.filter(\.isFlip).count }
@@ -57,12 +59,11 @@ struct FlashcardSet: Identifiable, Hashable {
 
 /// What a study mode needs from a set, so a mode is never entered with nothing to show.
 ///
-/// Quiz-style modes need multiple-choice questions; a set of pure `::` flip cards can't
+/// Quiz needs multiple-choice questions; a set of pure `::` flip cards can't
 /// supply them. `StudyMode.unavailableReason` turns that into a message, not an empty screen.
 enum StudyMode: String, CaseIterable, Identifiable {
     case flashcards   // prompt → tap to reveal the answer
     case quiz         // multiple-choice options to pick from
-    case voice        // spoken prompt, spoken answer
 
     var id: String { rawValue }
 
@@ -70,7 +71,6 @@ enum StudyMode: String, CaseIterable, Identifiable {
         switch self {
         case .flashcards: return "Flashcards"
         case .quiz:       return "Quiz"
-        case .voice:      return "Voice"
         }
     }
 
@@ -78,8 +78,8 @@ enum StudyMode: String, CaseIterable, Identifiable {
     func usableCards(in sets: [FlashcardSet]) -> [Card] {
         let cards = sets.flatMap(\.cards)
         switch self {
-        case .flashcards, .voice: return cards
-        case .quiz:               return cards.filter(\.isMultipleChoice)
+        case .flashcards: return cards
+        case .quiz:       return cards.filter(\.isMultipleChoice)
         }
     }
 

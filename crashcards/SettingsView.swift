@@ -82,7 +82,7 @@ struct SettingsView: View {
 
     private var libraryPanel: some View {
         Panel(title: "Library",
-              footnote: "Crash Cards never edits your .md files. The only file it writes is \(FlagStore.filename), in your first folder.") {
+              footnote: "Crash Cards never edits your .md files. The only file it writes is \(FlagStore.filename) — in your first folder, or alongside the app's own sets when you haven't added one.") {
             PanelRow(first: true) {
                 StatRow(label: "Sets loaded", value: "\(library.sets.count)")
             }

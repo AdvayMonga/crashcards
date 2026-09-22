@@ -71,7 +71,7 @@ struct FocusView: View {
 
             if let until = manager.unlockedUntil {
                 Text(until, style: .timer)
-                    .font(.pixel(30))
+                    .font(.number(30))
                     .foregroundStyle(Brand.green)
                     .monospacedDigit()
             } else if !statusDetail.isEmpty {

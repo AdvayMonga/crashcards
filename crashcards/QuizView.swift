@@ -65,6 +65,12 @@ struct QuizView: View {
             AIPickerView(prompt: request.prompt) { explaining = nil }
         }
         .onChange(of: session.position) { _, _ in
+            // Cleared here rather than in the advance task so that every route to a new
+            // card — answering, practising the missed ones, starting over — arrives with an
+            // empty box. Leaving the verdict set froze the card: both submit paths bail out
+            // while one stands.
+            typed = ""
+            typedVerdict = nil
             shownAt = Date()
             wentAway = false
         }
@@ -116,8 +122,7 @@ struct QuizView: View {
             // Answers sit low, where your thumb already is.
             if let accepted = card.typedAnswers {
                 TypedAnswer(accepted: accepted, verdict: typedVerdict,
-                            text: $typed, onSubmit: { submitTyped(accepted) },
-                            onReveal: { revealTyped(accepted) })
+                            text: $typed, onSubmit: { submitTyped(accepted) })
             } else {
                 VStack(spacing: 12) {
                     ForEach(choices(for: card)) { choice in
@@ -194,14 +199,6 @@ struct QuizView: View {
         land(right, verdict: right ? .right : .wrong(accepted))
     }
 
-    /// The way out of a card you can't produce — graded wrong, since it wasn't recalled,
-    /// but never a dead end. Quiz mode types flip cards too, and some of those answers are
-    /// whole sentences nobody types back.
-    private func revealTyped(_ accepted: [String]) {
-        guard typedVerdict == nil else { return }
-        land(false, verdict: .revealed(accepted))
-    }
-
     private func land(_ right: Bool, verdict: TypedVerdict) {
         typedVerdict = verdict
         session.record(right, elapsed: wentAway ? .infinity : Date().timeIntervalSince(shownAt))
@@ -215,7 +212,7 @@ struct QuizView: View {
 
         advance?.cancel()
         advance = Task { @MainActor in
-            // Longer than a tapped card: a revealed answer is there to be read.
+            // Longer than a tapped card: the answer you missed is there to be read.
             try? await Task.sleep(for: .seconds(right ? 0.8 : 1.8))
             guard !Task.isCancelled else { return }
             gain = nil
@@ -250,12 +247,11 @@ struct QuizView: View {
 enum TypedVerdict: Equatable {
     case right
     case wrong([String])
-    case revealed([String])
 
     var accepted: [String] {
         switch self {
         case .right: return []
-        case .wrong(let accepted), .revealed(let accepted): return accepted
+        case .wrong(let accepted): return accepted
         }
     }
     var isRight: Bool { self == .right }
@@ -267,7 +263,6 @@ private struct TypedAnswer: View {
     let verdict: TypedVerdict?
     @Binding var text: String
     let onSubmit: () -> Void
-    let onReveal: () -> Void
 
     @FocusState private var focused: Bool
 
@@ -298,14 +293,10 @@ private struct TypedAnswer: View {
                     .submitLabel(.done)
                     .onSubmit(onSubmit)
 
-                HStack(spacing: 12) {
-                    Button("Show answer") { onReveal() }
-                        .buttonStyle(CrashButton(kind: .ghost, tint: Brand.inkDim))
-                    Button("Check") { onSubmit() }
-                        .buttonStyle(.solid(Brand.chips))
-                        .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .opacity(text.trimmingCharacters(in: .whitespaces).isEmpty ? 0.45 : 1)
-                }
+                Button("Check") { onSubmit() }
+                    .buttonStyle(.solid(Brand.chips))
+                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .opacity(text.trimmingCharacters(in: .whitespaces).isEmpty ? 0.45 : 1)
             }
         }
         // Four options at 17pt with 16pt of padding, three 12pt gaps between them — the
@@ -402,7 +393,7 @@ private struct ScoreCard: View {
             Spacer()
 
             Text("\(shown)%")
-                .font(.pixel(72, relativeTo: .largeTitle))
+                .font(.number(72))
                 .foregroundStyle(tint)
                 .shadow(color: Brand.outline, radius: 0, x: 3, y: 4)
                 .scaleEffect(shown == percent && percent > 0 ? 1 : 0.9)
@@ -417,7 +408,7 @@ private struct ScoreCard: View {
             if session.score.total > 0 {
                 VStack(spacing: 2) {
                     Text("\(session.score.total)")
-                        .font(.pixel(36, relativeTo: .title))
+                        .font(.number(36))
                         .foregroundStyle(Brand.gold)
                         .shadow(color: Brand.outline, radius: 0, x: 2, y: 2)
                     Text(footnote)
@@ -486,7 +477,7 @@ private struct ScoreReadout: View {
                 .contentTransition(.numericText())
             if score.pendingMult > 1 {
                 Text(multText(score.pendingMult))
-                    .font(.brandCaption)
+                    .font(.number(16))
                     .foregroundStyle(Brand.mult)
                     .contentTransition(.numericText())
             }

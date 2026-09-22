@@ -74,8 +74,8 @@ extension Color {
 
 // MARK: - Type
 
-/// Pixelify Sans, bundled. A pixel face needs whole-pixel sizes to stay crisp, so every
-/// size here is even and `pixel(_:)` rounds anything Dynamic Type hands back.
+/// Pixelify Sans, bundled, for words. A pixel face needs whole-pixel sizes to stay crisp,
+/// so every size here is even. Figures use ``number(_:)`` instead.
 extension Font {
     private static let display = "PixelifySans-Bold"
     private static let text = "PixelifySans-Regular"
@@ -83,13 +83,12 @@ extension Font {
     /// The pixel face, snapped to the font's own grid.
     ///
     /// A pixel face only draws cleanly at whole multiples of the grid it was drawn on. Off
-    /// the grid, the renderer has to split single-pixel strokes across two device pixels,
-    /// and the glyphs that suffer are the ones built from short diagonal and horizontal
-    /// runs — which is why `5`, `2` and `6` go soft while `1` and `0` look fine.
-    ///
-    /// `relativeTo` is dropped for that reason: Dynamic Type scales by fractional factors,
-    /// so keeping it would put every size back off the grid. Long text uses ``reading``,
+    /// the grid, the renderer splits single-pixel strokes across two device pixels and the
+    /// whole face goes soft, so `relativeTo` is dropped: Dynamic Type scales by fractional
+    /// factors, which would put every size back off the grid. Long text uses ``reading``,
     /// which is a system face and scales properly.
+    ///
+    /// Crispness was not what made the figures hard to read — see ``number(_:)``.
     static func pixel(_ size: CGFloat, bold: Bool = true,
                       relativeTo style: Font.TextStyle = .body) -> Font {
         .custom(bold ? display : text, fixedSize: (size / grid).rounded() * grid)
@@ -107,8 +106,17 @@ extension Font {
     static let brandTitle = pixel(26, relativeTo: .title)
     static let brandLabel = pixel(18, relativeTo: .headline)
     static let brandCaption = pixel(15, bold: false, relativeTo: .caption)
+    /// Figures, in the screen face rather than the pixel one.
+    ///
+    /// Pixelify Sans draws `5` with a squared-off top arm that reads as a reversed `2` —
+    /// fine in a word, bad in a score, where a digit has to be unambiguous at a glance.
+    /// Words keep the pixel face; only figures move.
+    static func number(_ size: CGFloat) -> Font {
+        .system(size: size, weight: .heavy, design: .rounded)
+    }
+
     /// Numbers carry the score, so they read a size up from a label.
-    static let brandNumber = pixel(26, relativeTo: .title3)
+    static let brandNumber = number(26)
 
     /// The two faces used for card and answer text, where length varies wildly.
     static let brandCard = reading(26, .semibold)

@@ -106,17 +106,19 @@ extension Font {
     static let brandTitle = pixel(26, relativeTo: .title)
     static let brandLabel = pixel(18, relativeTo: .headline)
     static let brandCaption = pixel(15, bold: false, relativeTo: .caption)
-    /// Figures, in the screen face rather than the pixel one.
+    /// Figures in the screen face, for the few places a misread digit costs something.
     ///
-    /// Pixelify Sans draws `5` with a squared-off top arm that reads as a reversed `2` —
-    /// fine in a word, bad in a score, where a digit has to be unambiguous at a glance.
-    /// Words keep the pixel face; only figures move.
+    /// Pixelify Sans draws `5` with a squared-off top arm that reads as a reversed `2`.
+    /// In a score that is a cost worth paying — the pixel face is the app's voice, and a
+    /// score is read for its size more than its digits. In a clock it isn't: a focus
+    /// window set half an hour wrong, or a countdown misread, is a real mistake. So only
+    /// times use this.
     static func number(_ size: CGFloat) -> Font {
         .system(size: size, weight: .heavy, design: .rounded)
     }
 
     /// Numbers carry the score, so they read a size up from a label.
-    static let brandNumber = number(26)
+    static let brandNumber = pixel(26, relativeTo: .title3)
 
     /// The two faces used for card and answer text, where length varies wildly.
     static let brandCard = reading(26, .semibold)

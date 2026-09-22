@@ -406,21 +406,12 @@ private struct ScoreCard: View {
         return percent >= 50 ? Brand.gold : Brand.mult
     }
 
-    /// The line under the points. A perfect run says so and nothing else — it already tells
-    /// you the streak went the distance.
-    private var footnote: String {
-        let score = session.score
-        if score.perfectBonus > 0 { return "perfect run · +\(score.perfectBonus)" }
-        if score.bestStreak >= 3 { return "points · best run of \(score.bestStreak)" }
-        return "points"
-    }
-
     var body: some View {
         VStack(spacing: 14) {
             Spacer()
 
             Text("\(shown)%")
-                .font(.number(72))
+                .font(.pixel(72))
                 .foregroundStyle(tint)
                 .shadow(color: Brand.outline, radius: 0, x: 3, y: 4)
                 .scaleEffect(shown == percent && percent > 0 ? 1 : 0.9)
@@ -435,12 +426,13 @@ private struct ScoreCard: View {
             if session.score.total > 0 {
                 VStack(spacing: 2) {
                     Text("\(session.score.total)")
-                        .font(.number(36))
+                        .font(.pixel(36))
                         .foregroundStyle(Brand.gold)
                         .shadow(color: Brand.outline, radius: 0, x: 2, y: 2)
-                    Text(footnote)
+                    Text("POINTS")
                         .font(.brandCaption)
-                        .foregroundStyle(session.score.perfectBonus > 0 ? Brand.green : Brand.inkDim)
+                        .tracking(1.4)
+                        .foregroundStyle(Brand.gold)
                 }
                 .padding(.top, 4)
             }
@@ -504,7 +496,7 @@ private struct ScoreReadout: View {
                 .contentTransition(.numericText())
             if score.pendingMult > 1 {
                 Text(multText(score.pendingMult))
-                    .font(.number(16))
+                    .font(.brandCaption)
                     .foregroundStyle(Brand.mult)
                     .contentTransition(.numericText())
             }

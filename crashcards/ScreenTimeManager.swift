@@ -43,6 +43,9 @@ final class ScreenTimeManager {
         selection = BlockingShared.selection
         unlockedUntil = BlockingShared.unlockedUntil
         schedules = BlockingShared.schedules
+        // Registrations live in iOS, not here, and a reinstall or a dropped registration
+        // would leave windows that block only while the app happens to be open.
+        registerSchedules()
         refresh()
     }
 
@@ -54,10 +57,16 @@ final class ScreenTimeManager {
     var isUnlockedNow: Bool { BlockingShared.isUnlocked }
 
     /// True while apps are shielded — by the switch or by a schedule, and not unlocked.
-    var isShieldActive: Bool { BlockingShared.shouldShield }
+    /// The same rule as `BlockingShared.shouldShield`, over the loaded schedules.
+    var isShieldActive: Bool {
+        !BlockingShared.isUnlocked && (isBlocking || activeSchedule != nil)
+    }
 
     /// The schedule doing the blocking right now, if that's why the shield is up.
-    var activeSchedule: FocusSchedule? { BlockingShared.activeSchedule() }
+    /// Read from the loaded array rather than `BlockingShared`, which would decode the
+    /// stored JSON on every pass of `body`. Only this class writes schedules, so the two
+    /// can't disagree; the extensions, which have no such array, go through `BlockingShared`.
+    var activeSchedule: FocusSchedule? { schedules.first { $0.isActive(at: Date()) } }
 
     /// The next window to open, and when. Drives the "next block" line on the Focus tab.
     var nextScheduled: (schedule: FocusSchedule, date: Date)? {
@@ -83,6 +92,8 @@ final class ScreenTimeManager {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
             isAuthorized = AuthorizationCenter.shared.authorizationStatus == .approved
             errorText = nil
+            // Any window added before permission was granted could not be registered then.
+            if isAuthorized { registerSchedules() }
         } catch {
             errorText = error.localizedDescription
             isAuthorized = false
@@ -149,6 +160,10 @@ final class ScreenTimeManager {
     /// with the app closed. Registrations are rebuilt wholesale — reconciling them one by one
     /// would be more code than simply starting over.
     private func registerSchedules() {
+        // Monitoring can't be started before Screen Time is authorized; requesting it
+        // registers whatever is already saved, so nothing is lost by returning here.
+        guard isAuthorized else { return }
+
         let stale = center.activities.filter {
             $0.rawValue.hasPrefix(BlockingShared.scheduleActivityPrefix)
         }

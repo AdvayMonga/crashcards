@@ -5,6 +5,7 @@ import SwiftUI
 struct QuizView: View {
     @State var session: StudySession
     @Environment(FlagStore.self) private var flags
+    @Environment(StatsStore.self) private var stats
     let onClose: () -> Void
 
     @State private var picked: Choice?
@@ -43,7 +44,19 @@ struct QuizView: View {
         .animation(Motion.deal, value: session.isFinished)
         .animation(Motion.pop, value: flagging)
         .safeAreaInset(edge: .top) { header }
-        .onDisappear { advance?.cancel() }
+        // Banked the moment the last question lands, so a run that ends the way it's meant
+        // to is never lost to the app being killed on the score screen.
+        .onChange(of: session.isFinished) { _, finished in if finished { bank() } }
+        .onDisappear {
+            advance?.cancel()
+            bank()
+        }
+    }
+
+    /// Hand this run's questions to the lifetime totals. Idempotent — whichever of the two
+    /// call sites gets there first is the one that counts.
+    private func bank() {
+        if let run = session.consumeRun() { stats.record(run) }
     }
 
     private func question(_ card: Card) -> some View {

@@ -3,6 +3,7 @@ import FamilyControls
 import ManagedSettings
 import DeviceActivity
 import Observation
+import UserNotifications
 
 /// Blocks user-chosen apps via Screen Time (Family Controls). Opening a blocked app shows
 /// the system shield; answering questions in the app lifts it for a grace window.
@@ -93,7 +94,7 @@ final class ScreenTimeManager {
             isAuthorized = AuthorizationCenter.shared.authorizationStatus == .approved
             errorText = nil
             // Any window added before permission was granted could not be registered then.
-            if isAuthorized { registerSchedules() }
+            if isAuthorized { registerSchedules(); requestNotifications() }
         } catch {
             errorText = error.localizedDescription
             isAuthorized = false
@@ -106,6 +107,7 @@ final class ScreenTimeManager {
     }
 
     func startBlocking() {
+        requestNotifications()
         isBlocking = true
         unlockedUntil = nil
         BlockingShared.isBlocking = true
@@ -130,6 +132,12 @@ final class ScreenTimeManager {
         BlockingShared.unlockedUntil = until
         BlockingShared.applyShield()
         scheduleRelock(at: until)
+    }
+
+    /// Before iOS 26.5 the shield's Answer button reaches the app through a notification,
+    /// so the permission is asked for where blocking is turned on. Asked once; iOS remembers.
+    private func requestNotifications() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     // MARK: - Schedules

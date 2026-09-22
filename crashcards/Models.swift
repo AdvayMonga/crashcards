@@ -7,10 +7,16 @@ struct Choice: Identifiable, Hashable {
     let isCorrect: Bool
 }
 
-/// A card is either a two-sided flip card or a multiple-choice question.
+/// A card is a two-sided flip card, a multiple-choice question, or a question you type
+/// the answer to.
+///
+/// `typed` carries every spelling that counts, because one accepted answer is rarely
+/// enough — "a towel" and "towel" are the same answer, and the author is the only one who
+/// knows which variants are fair.
 enum CardContent: Hashable {
     case flip(front: String, back: String)
     case multipleChoice(question: String, choices: [Choice])
+    case typed(question: String, accepted: [String])
 }
 
 struct Card: Identifiable, Hashable {
@@ -25,6 +31,7 @@ struct Card: Identifiable, Hashable {
         switch content {
         case .flip(let front, _): return front
         case .multipleChoice(let question, _): return question
+        case .typed(let question, _): return question
         }
     }
 
@@ -33,6 +40,7 @@ struct Card: Identifiable, Hashable {
         switch content {
         case .flip(_, let back): return back
         case .multipleChoice(_, let choices): return choices.first(where: \.isCorrect)?.text ?? ""
+        case .typed(_, let accepted): return accepted.first ?? ""
         }
     }
 }
@@ -42,7 +50,23 @@ extension Card {
         if case .multipleChoice = content { return true }
         return false
     }
-    var isFlip: Bool { !isMultipleChoice }
+    var isFlip: Bool {
+        if case .flip = content { return true }
+        return false
+    }
+
+    /// Every spelling that counts as right when this card is typed, or nil if it is
+    /// answered by tapping instead.
+    ///
+    /// A flip card answers here too: quiz mode types every card that isn't multiple
+    /// choice, so the back of a `::` card is simply its one accepted answer.
+    var typedAnswers: [String]? {
+        switch content {
+        case .multipleChoice: return nil
+        case .flip(_, let back): return [back]
+        case .typed(_, let accepted): return accepted
+        }
+    }
 }
 
 /// One `.md` file's worth of cards. `id` is the filename (unique within the folder).
@@ -59,11 +83,11 @@ struct FlashcardSet: Identifiable, Hashable {
 
 /// What a study mode needs from a set, so a mode is never entered with nothing to show.
 ///
-/// Quiz needs multiple-choice questions; a set of pure `::` flip cards can't
-/// supply them. `StudyMode.unavailableReason` turns that into a message, not an empty screen.
+/// `StudyMode.unavailableReason` turns an unusable selection into a message rather than an
+/// empty screen.
 enum StudyMode: String, CaseIterable, Identifiable {
     case flashcards   // prompt → tap to reveal the answer
-    case quiz         // multiple-choice options to pick from
+    case quiz         // graded: pick an option, or type the answer
 
     var id: String { rawValue }
 
@@ -79,7 +103,9 @@ enum StudyMode: String, CaseIterable, Identifiable {
         let cards = sets.flatMap(\.cards)
         switch self {
         case .flashcards: return cards
-        case .quiz:       return cards.filter(\.isMultipleChoice)
+        // Every card can be quizzed now: the ones with options are picked from, and the
+        // rest are typed.
+        case .quiz:       return cards
         }
     }
 
@@ -87,7 +113,6 @@ enum StudyMode: String, CaseIterable, Identifiable {
     func unavailableReason(for sets: [FlashcardSet]) -> ModeUnavailable? {
         if sets.isEmpty { return .noSetsSelected }
         if sets.allSatisfy({ $0.cards.isEmpty }) { return .noCards }
-        if usableCards(in: sets).isEmpty, self == .quiz { return .noQuestions }
         return nil
     }
 }
@@ -96,13 +121,11 @@ enum StudyMode: String, CaseIterable, Identifiable {
 enum ModeUnavailable {
     case noSetsSelected
     case noCards
-    case noQuestions
 
     var title: String {
         switch self {
         case .noSetsSelected: return "No sets selected"
         case .noCards:        return "These sets have no cards"
-        case .noQuestions:    return "No quiz questions here"
         }
     }
 
@@ -112,16 +135,9 @@ enum ModeUnavailable {
             return "Pick at least one set on the Sets screen, then start again."
         case .noCards:
             return "The selected files parsed without producing any cards. Check File Problems in Settings for the reason."
-        case .noQuestions:
-            return "Quiz mode needs multiple-choice questions, and the selected sets only have flip cards. Add a question to one of your .md files in this format, then reopen the app:"
         }
     }
 
     /// The format to write, shown only when that's the actual fix.
-    var expected: String? {
-        switch self {
-        case .noQuestions: return MarkdownParser.questionExample
-        case .noSetsSelected, .noCards: return nil
-        }
-    }
+    var expected: String? { nil }
 }

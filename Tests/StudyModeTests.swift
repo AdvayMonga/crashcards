@@ -14,14 +14,16 @@ import Testing
         FlashcardSet(id: "s.md", title: "S", cards: cards)
     }
 
-    @Test func quizUsesOnlyQuestionsWhileFlashcardsUseEverything() {
+    /// Both modes take every card now: quiz picks from the ones with options and types
+    /// the rest, so a deck of pure flip cards is quizzable rather than turned away.
+    @Test func bothModesUseEveryCard() {
         let mixed = [set([flip, question])]
-        #expect(StudyMode.quiz.usableCards(in: mixed).count == 1)
+        #expect(StudyMode.quiz.usableCards(in: mixed).count == 2)
         #expect(StudyMode.flashcards.usableCards(in: mixed).count == 2)
     }
 
-    @Test func quizExplainsItselfWhenASetHasNoQuestions() {
-        #expect(StudyMode.quiz.unavailableReason(for: [set([flip])]) == .noQuestions)
+    @Test func aDeckOfOnlyFlipCardsCanStillBeQuizzed() {
+        #expect(StudyMode.quiz.unavailableReason(for: [set([flip])]) == nil)
         #expect(StudyMode.flashcards.unavailableReason(for: [set([flip])]) == nil)
     }
 

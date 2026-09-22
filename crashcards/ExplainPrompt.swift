@@ -28,6 +28,8 @@ enum ExplainPrompt {
         switch card.content {
         case .flip(let front, let back):
             return "\(front)\nAnswer: \(back)"
+        case .typed(let question, let accepted):
+            return "\(question)\nAnswer: \(accepted.joined(separator: " / "))"
         case .multipleChoice(let question, let choices):
             let options = choices.map { choice in
                 "- \(choice.text)\(choice.isCorrect ? "  <- correct" : "")"

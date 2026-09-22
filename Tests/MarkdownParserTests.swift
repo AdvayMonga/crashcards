@@ -83,9 +83,9 @@ import Testing
 
     /// Each of these nearly parses, and each must say so rather than vanishing.
     @Test(arguments: [
-        ("A question?\n- [x] Only one", ParseIssue.Kind.tooFewOptions),
+        ("A question?\n- [y] Not a checkbox", ParseIssue.Kind.tooFewOptions),
         ("A question?\n- [ ] One\n- [ ] Two", ParseIssue.Kind.noCorrectOption),
-        ("A question?\n- [x] One\n- [x] Two", ParseIssue.Kind.multipleCorrectOptions),
+        ("A question?\n- [x] One\n- [x] Two\n- [ ] Three", ParseIssue.Kind.multipleCorrectOptions),
         ("A question?\n\n- [ ] One\n- [x] Two", ParseIssue.Kind.blankLineBeforeOptions),
         ("- [ ] One\n- [x] Two", ParseIssue.Kind.orphanOptions),
         (" :: no front", ParseIssue.Kind.emptyFront),

@@ -34,8 +34,16 @@ enum DeckPrompt {
     - [ ] It stays the same, because pressure is what sets volume
     - [ ] It quadruples, because the relationship is squared
 
+    For anything with a single short exact answer — a word, a name, a date, a riddle — use
+    the typed form instead, where every line is [x] and each one is a spelling I could
+    reasonably type:
+
+    Which planet spins backwards compared to the rest?
+    - [x] Venus
+
     Rules, which the importer enforces strictly:
-    - Exactly one option marked [x]. Every other option is [ ].
+    - Multiple choice: exactly one option marked [x], every other option [ ].
+    - Typed: every option marked [x], and no [ ] options at all.
     - No blank line between a question and its first option.
     - One blank line between cards.
     - One line per option. No sub-bullets, no numbering, no bold.
@@ -46,6 +54,9 @@ enum DeckPrompt {
     - Every wrong option should be something a person who half-learned this would genuinely pick. Nothing absurd or obviously padded.
     - Keep the four options within a few words of each other in length. If the correct one is always the longest, I can pass the deck without knowing anything.
     - Keep questions to one or two lines and options short.
+
+    Prefer multiple choice. Reach for the typed form only when the answer is short enough
+    that I could type it exactly.
 
     Make as many cards as the material genuinely supports. If I gave you source material, cover all of it rather than stopping at a round number. Stop at 200 cards.
     """

@@ -77,7 +77,6 @@ struct ModeUnavailableView: View {
         switch reason {
         case .noSetsSelected: return .cards
         case .noCards:        return .folder
-        case .noQuestions:    return .question
         }
     }
 }

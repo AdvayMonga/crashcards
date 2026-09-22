@@ -24,6 +24,9 @@ struct QuizView: View {
     @State private var gain: Int?
     /// Held so a dismissed or restarted session can't be advanced by the previous one's timer.
     @State private var advance: Task<Void, Never>?
+    /// What's been typed on a typed card, and how it was judged once submitted.
+    @State private var typed = ""
+    @State private var typedVerdict: TypedVerdict?
 
     var body: some View {
         ZStack {
@@ -105,9 +108,15 @@ struct QuizView: View {
             Spacer(minLength: 0)
 
             // Answers sit low, where your thumb already is.
-            VStack(spacing: 12) {
-                ForEach(choices(for: card)) { choice in
-                    OptionRow(choice: choice, picked: picked) { answer(choice) }
+            if let accepted = card.typedAnswers {
+                TypedAnswer(accepted: accepted, verdict: typedVerdict,
+                            text: $typed, onSubmit: { submitTyped(accepted) },
+                            onReveal: { revealTyped(accepted) })
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(choices(for: card)) { choice in
+                        OptionRow(choice: choice, picked: picked) { answer(choice) }
+                    }
                 }
             }
         }
@@ -172,6 +181,42 @@ struct QuizView: View {
         }
     }
 
+    /// Grade what was typed, show the answer either way, then move on like a tapped card.
+    private func submitTyped(_ accepted: [String]) {
+        guard typedVerdict == nil else { return }
+        let right = AnswerMatcher.matches(typed, anyOf: accepted)
+        land(right, verdict: right ? .right : .wrong(accepted))
+    }
+
+    /// The way out of a card you can't produce — graded wrong, since it wasn't recalled,
+    /// but never a dead end. Quiz mode types flip cards too, and some of those answers are
+    /// whole sentences nobody types back.
+    private func revealTyped(_ accepted: [String]) {
+        guard typedVerdict == nil else { return }
+        land(false, verdict: .revealed(accepted))
+    }
+
+    private func land(_ right: Bool, verdict: TypedVerdict) {
+        typedVerdict = verdict
+        session.record(right, elapsed: wentAway ? .infinity : Date().timeIntervalSince(shownAt))
+        if right {
+            gain = session.score.lastGain
+            Haptics.correct()
+        } else {
+            Haptics.wrong()
+            misses += 1
+        }
+
+        advance?.cancel()
+        advance = Task { @MainActor in
+            // Longer than a tapped card: a revealed answer is there to be read.
+            try? await Task.sleep(for: .seconds(right ? 0.8 : 1.8))
+            guard !Task.isCancelled else { return }
+            gain = nil
+            session.next()
+        }
+    }
+
     private func review() {
         advance?.cancel()
         session = StudySession(cards: session.missedCards, dayStreak: session.dayStreak)
@@ -187,8 +232,78 @@ struct QuizView: View {
     private func reset() {
         picked = nil
         gain = nil
+        typed = ""
+        typedVerdict = nil
         shownAt = Date()
         wentAway = false
+    }
+}
+
+/// How a typed answer was judged, carrying what the card would have accepted so the card
+/// can teach on the way past.
+enum TypedVerdict: Equatable {
+    case right
+    case wrong([String])
+    case revealed([String])
+
+    var accepted: [String] {
+        switch self {
+        case .right: return []
+        case .wrong(let accepted), .revealed(let accepted): return accepted
+        }
+    }
+    var isRight: Bool { self == .right }
+}
+
+/// The answer box: type it, submit it, or give up and be shown.
+private struct TypedAnswer: View {
+    let accepted: [String]
+    let verdict: TypedVerdict?
+    @Binding var text: String
+    let onSubmit: () -> Void
+    let onReveal: () -> Void
+
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if let verdict {
+                // Every accepted spelling, so it's clear what would have counted.
+                VStack(spacing: 4) {
+                    Text(verdict.isRight ? "Right" : accepted.joined(separator: "  ·  "))
+                        .font(.brandLabel)
+                        .foregroundStyle(verdict.isRight ? Brand.green : Brand.gold)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if case .wrong = verdict, !text.isEmpty {
+                        Text("you said “\(text)”")
+                            .font(.brandCaption)
+                            .foregroundStyle(Brand.inkFaint)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .slab(verdict.isRight ? Brand.surfaceHigh : Brand.surface)
+                .transition(.scale(scale: 0.96).combined(with: .opacity))
+            } else {
+                CrashField(placeholder: "Type your answer", text: $text)
+                    .focused($focused)
+                    .submitLabel(.done)
+                    .onSubmit(onSubmit)
+
+                HStack(spacing: 12) {
+                    Button("Show answer") { onReveal() }
+                        .buttonStyle(CrashButton(kind: .ghost, tint: Brand.inkDim))
+                    Button("Check") { onSubmit() }
+                        .buttonStyle(.solid(Brand.chips))
+                        .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .opacity(text.trimmingCharacters(in: .whitespaces).isEmpty ? 0.45 : 1)
+                }
+            }
+        }
+        .animation(Motion.pop, value: verdict)
+        .onAppear { focused = true }
     }
 }
 

@@ -208,6 +208,12 @@ enum ImportParser {
                     out.append("- [\(choice.isCorrect ? "x" : " ")] \(choice.text)")
                 }
                 out.append("")
+            case .typed(let question, let accepted):
+                out.append(question)
+                for answer in accepted {
+                    out.append("- [x] \(answer)")
+                }
+                out.append("")
             }
         }
         return out.joined(separator: "\n")

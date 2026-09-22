@@ -72,29 +72,51 @@ struct FencedPasteTests {
 }
 
 struct StarterDeckTests {
-    /// The seeded files have to survive the same parser every other set goes through.
-    @Test(arguments: StarterDecks.names)
-    func parseIntoTwentyQuestions(name: String) throws {
+    private func cards(in name: String) throws -> [Card] {
         let url = try #require(Bundle.main.url(forResource: name, withExtension: "md"),
                                "\(name).md is not in the app bundle")
         let text = try String(contentsOf: url, encoding: .utf8)
         let parsed = MarkdownParser.parse(text, filename: "\(name).md")
-
-        // `allSatisfy` is rethrows, which the #expect expansion can't infer through.
-        let questions = parsed.set.cards.filter(\.isMultipleChoice).count
         #expect(parsed.issues.isEmpty)
-        #expect(parsed.set.cards.count == 20)
-        #expect(questions == 20)
+        return parsed.set.cards
+    }
+
+    /// The seeded files have to survive the same parser every other set goes through.
+    @Test(arguments: StarterDecks.names)
+    func parseIntoTwentyCards(name: String) throws {
+        #expect(try cards(in: name).count == 20)
+    }
+
+    /// The two decks are the tutorial for the two ways of answering, so each has to be
+    /// wholly one kind — a mixed starter deck teaches neither.
+    @Test func eachDeckDemonstratesOneAnswerStyle() throws {
+        let multipleChoice = try cards(in: "Weird But True").filter(\.isMultipleChoice).count
+        #expect(multipleChoice == 20)
+
+        let typed = try cards(in: "Riddles").filter { $0.typedAnswers != nil }.count
+        #expect(typed == 20)
+    }
+
+    /// Riddles are typed, so the accepted spellings have to survive normalisation — and
+    /// two riddles must never accept the same answer.
+    @Test func riddleAnswersAreDistinctAndNonEmpty() throws {
+        var seen: Set<String> = []
+        for card in try cards(in: "Riddles") {
+            let accepted = try #require(card.typedAnswers)
+            #expect(!accepted.isEmpty)
+            for answer in accepted {
+                let key = AnswerMatcher.normalise(answer)
+                #expect(!key.isEmpty, "empty accepted answer on: \(card.prompt)")
+                #expect(!seen.contains(key), "two riddles both accept \"\(answer)\"")
+                seen.insert(key)
+            }
+        }
     }
 
     /// If the right answer is reliably the longest, the deck can be passed without knowing
     /// anything — the one deck-quality rule worth enforcing in code.
-    @Test(arguments: StarterDecks.names)
-    func doNotGiveTheAnswerAwayByLength(name: String) throws {
-        let url = try #require(Bundle.main.url(forResource: name, withExtension: "md"))
-        let text = try String(contentsOf: url, encoding: .utf8)
-        let cards = MarkdownParser.parse(text, filename: "\(name).md").set.cards
-
+    @Test func doNotGiveTheAnswerAwayByLength() throws {
+        let cards = try cards(in: "Weird But True")
         let longestIsCorrect = cards.filter { card in
             guard case .multipleChoice(_, let choices) = card.content,
                   let longest = choices.max(by: { $0.text.count < $1.text.count }) else { return false }

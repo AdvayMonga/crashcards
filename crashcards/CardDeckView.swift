@@ -248,6 +248,9 @@ private struct FlipCard: View {
                     .font(.brandCard)
                     .foregroundStyle(Brand.cardInk)
                     .multilineTextAlignment(.center)
+                    // The card is a fixed size, so past a point text has to give: it
+                    // shrinks first and truncates rather than spilling over the edge.
+                    .lineLimit(12)
                     .minimumScaleFactor(0.55)
                     .padding(.horizontal, 30)
                 Spacer(minLength: 0)

@@ -56,6 +56,11 @@ struct QuizView: View {
                 .zIndex(1)
             }
         }
+        // On the outer stack, not the question inside it: the keyboard shrinks the safe
+        // area of whatever owns it, and a child that ignores the inset is still laid out
+        // inside a parent that shrank. Applied here, nothing reflows when the keyboard
+        // arrives between one typed card and the next.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .animation(Motion.deal, value: session.position)
         .animation(Motion.deal, value: session.isFinished)
         .animation(Motion.pop, value: flagging)
@@ -104,6 +109,9 @@ struct QuizView: View {
                     .font(.brandCard)
                     .foregroundStyle(Brand.cardInk)
                     .multilineTextAlignment(.center)
+                    // Shrinks first, then truncates. Without a line limit the card grows
+                    // with the question and a long one runs off the screen.
+                    .lineLimit(9)
                     .minimumScaleFactor(0.6)
                     .padding(.horizontal, 26)
                     .padding(.vertical, 34)
@@ -134,9 +142,6 @@ struct QuizView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 28)
-        // Without this the keyboard shrinks the safe area, the spacers redistribute, and
-        // the question slides up the screen as you start typing.
-        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     /// Only reached for cards that have options: anything else took the typed branch, so
@@ -350,6 +355,8 @@ private struct OptionRow: View {
                 Text(choice.text)
                     .font(.brandBody)
                     .multilineTextAlignment(.leading)
+                    .lineLimit(4)
+                    .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let glyph {
                     PixelIcon(glyph: glyph, size: 18, color: Brand.outline)

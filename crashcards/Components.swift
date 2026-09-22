@@ -28,8 +28,13 @@ struct Slab: ViewModifier {
             }
             .background(alignment: .bottom) {
                 // The ledge. Sized to the content and pushed down, so only its lip shows.
+                //
+                // Its top is held below the face's corner radius. Without that, the face
+                // curves inward at the top while the ledge behind it is still square, and
+                // a grey wedge shows through each top corner.
                 shape.fill(fill.opacity(0.001).blended(under: Brand.outline, amount: 0.55))
                     .overlay(shape.strokeBorder(Brand.outline, lineWidth: Brand.stroke))
+                    .padding(.top, radius)
                     .offset(y: lift)
                     .shadow(color: .black.opacity(0.35), radius: 6, y: 4)
             }

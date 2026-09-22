@@ -6,7 +6,6 @@ struct SettingsView: View {
     @Environment(FlagStore.self) private var flags
     @State private var importing = false
     @State private var showingProblems = false
-    @State private var provider = Prefs.preferredProviderID
 
     private var hasProblems: Bool { library.issueCount > 0 || flags.loadError != nil }
 
@@ -14,7 +13,6 @@ struct SettingsView: View {
         ScrollView {
             VStack(spacing: 16) {
                 StatsPanels()
-                aiPanel
                 foldersPanel
                 libraryPanel
             }
@@ -42,19 +40,6 @@ struct SettingsView: View {
             }
         }
         .animation(Motion.pop, value: library.importError)
-        .onChange(of: provider) { _, new in Prefs.preferredProviderID = new }
-    }
-
-    /// Which chatbot the handoff buttons open. No account, no key, nothing sent from here —
-    /// the app only ever opens a chat with a prompt in it.
-    private var aiPanel: some View {
-        Panel(title: "Explain with",
-              footnote: "Explaining a card opens \(AIProvider.preferred.name) with the question in it. Crash Cards has no AI of its own and sends nothing on its own.") {
-            PanelRow(first: true) {
-                CrashSegmented(options: AIProvider.all.map { ($0.id, $0.name) },
-                               selection: $provider)
-            }
-        }
     }
 
     private var foldersPanel: some View {

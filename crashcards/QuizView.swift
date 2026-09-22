@@ -27,6 +27,8 @@ struct QuizView: View {
     /// What's been typed on a typed card, and how it was judged once submitted.
     @State private var typed = ""
     @State private var typedVerdict: TypedVerdict?
+    /// The prompt waiting for you to say which chatbot should answer it.
+    @State private var explaining: ExplainRequest?
 
     var body: some View {
         ZStack {
@@ -35,7 +37,8 @@ struct QuizView: View {
             Group {
                 if session.isFinished {
                     ScoreCard(session: session, onReview: review,
-                              onRestart: restart, onDone: onClose)
+                              onRestart: restart, onDone: onClose,
+                              onExplain: { explaining = $0 })
                 } else if let card = session.current {
                     question(card)
                         .id(session.position)   // a new question is dealt as its own view
@@ -58,6 +61,9 @@ struct QuizView: View {
         .animation(Motion.pop, value: flagging)
         .animation(Motion.pop, value: gain)
         .safeAreaInset(edge: .top) { header }
+        .screenLayer(item: $explaining) { request in
+            AIPickerView(prompt: request.prompt) { explaining = nil }
+        }
         .onChange(of: session.position) { _, _ in
             shownAt = Date()
             wentAway = false
@@ -125,8 +131,8 @@ struct QuizView: View {
         .padding(.bottom, 28)
     }
 
-    /// Quiz mode is only ever handed multiple-choice cards (`StudyMode.usableCards` filters
-    /// to them), so the fallback is a formality rather than a way to self-grade a flip card.
+    /// Only reached for cards that have options: anything else took the typed branch, so
+    /// the fallback is a formality rather than a way to self-grade a flip card.
     private func choices(for card: Card) -> [Choice] {
         guard case .multipleChoice(_, let choices) = card.content else {
             return [Choice(text: card.answer, isCorrect: true)]
@@ -287,7 +293,7 @@ private struct TypedAnswer: View {
                 .slab(verdict.isRight ? Brand.surfaceHigh : Brand.surface)
                 .transition(.scale(scale: 0.96).combined(with: .opacity))
             } else {
-                CrashField(placeholder: "Type your answer", text: $text)
+                CrashField(placeholder: "Type your answer", text: $text, minHeight: 44)
                     .focused($focused)
                     .submitLabel(.done)
                     .onSubmit(onSubmit)
@@ -302,6 +308,10 @@ private struct TypedAnswer: View {
                 }
             }
         }
+        // Four options at 17pt with 16pt of padding, three 12pt gaps between them — the
+        // region a multiple-choice card fills. Holding it means the question card doesn't
+        // jump down the screen when the next card happens to be typed.
+        .frame(maxWidth: .infinity, minHeight: 240, alignment: .top)
         .animation(Motion.pop, value: verdict)
         .onAppear { focused = true }
     }
@@ -361,9 +371,10 @@ private struct ScoreCard: View {
     let onReview: () -> Void
     let onRestart: () -> Void
     let onDone: () -> Void
+    /// Handed up so the picker is presented over the whole screen, not inside this card.
+    let onExplain: (ExplainRequest) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.openURL) private var openURL
     /// Counts up to `percent` on arrival, the way a chip total does.
     @State private var shown = 0
 
@@ -425,8 +436,9 @@ private struct ScoreCard: View {
                     // The end of the run, not the moment of answering: a wrong answer moves
                     // you on by itself, and stopping the quiz dead to leave for a chat app
                     // would undo the thing that makes it a quiz.
-                    Button("Explain \(missed.count) missed with \(AIProvider.preferred.name)") {
-                        explainMissed()
+                    Button("Explain \(missed.count) missed with AI") {
+                        Haptics.tap()
+                        onExplain(ExplainRequest(prompt: ExplainPrompt.text(for: missed)))
                     }
                     .buttonStyle(.soft(Brand.chips))
                 }
@@ -441,13 +453,6 @@ private struct ScoreCard: View {
         .padding(.horizontal, 26)
         .padding(.bottom, 26)
         .task { await rollUp() }
-    }
-
-    private func explainMissed() {
-        Haptics.tap()
-        let prompt = ExplainPrompt.text(for: missed)
-        UIPasteboard.general.string = prompt
-        if let url = AIProvider.preferred.url(prompt: prompt) { openURL(url) }
     }
 
     /// Ticks the number up rather than snapping it, so the result lands as an event.

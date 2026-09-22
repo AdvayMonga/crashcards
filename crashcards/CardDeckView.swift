@@ -23,6 +23,8 @@ struct CardDeckView: View {
     @State private var flipped: Set<Card.ID> = []
     /// Where the finger has dragged the top card. Zero whenever nothing is being held.
     @State private var held: CGSize = .zero
+    /// The prompt waiting for you to say which chatbot should answer it.
+    @State private var explaining: ExplainRequest?
 
     /// A playing card's proportions, the margin it keeps from the screen edge, and how far
     /// each card behind the top one is offset — which is all you ever see of them.
@@ -78,6 +80,9 @@ struct CardDeckView: View {
             }
         }
         .safeAreaInset(edge: .top) { header }
+        .screenLayer(item: $explaining) { request in
+            AIPickerView(prompt: request.prompt) { explaining = nil }
+        }
         .animation(Motion.pop, value: flagging)
     }
 
@@ -165,9 +170,7 @@ struct CardDeckView: View {
     private func explainCurrent() {
         guard let card = currentCard else { return }
         Haptics.tap()
-        let prompt = ExplainPrompt.text(for: [card])
-        UIPasteboard.general.string = prompt
-        if let url = AIProvider.preferred.url(prompt: prompt) { openURL(url) }
+        explaining = ExplainRequest(prompt: ExplainPrompt.text(for: [card]))
     }
 
     private func toggleFlip(_ card: Card) {
@@ -188,7 +191,7 @@ struct CardDeckView: View {
             // Only once the answer is showing: explaining a card you haven't attempted
             // hands you the answer instead of teaching you anything.
             let turned = currentCard.map { flipped.contains($0.id) } ?? false
-            HeaderChip(glyph: .question, name: "Explain this card",
+            HeaderChip(glyph: .question, name: "Explain with AI",
                        tint: turned ? Brand.chips : Brand.inkFaint) { explainCurrent() }
                 .disabled(!turned)
 

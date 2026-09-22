@@ -80,11 +80,23 @@ extension Font {
     private static let display = "PixelifySans-Bold"
     private static let text = "PixelifySans-Regular"
 
-    /// The pixel face. `relativeTo` keeps Dynamic Type working on a custom font.
+    /// The pixel face, snapped to the font's own grid.
+    ///
+    /// A pixel face only draws cleanly at whole multiples of the grid it was drawn on. Off
+    /// the grid, the renderer has to split single-pixel strokes across two device pixels,
+    /// and the glyphs that suffer are the ones built from short diagonal and horizontal
+    /// runs — which is why `5`, `2` and `6` go soft while `1` and `0` look fine.
+    ///
+    /// `relativeTo` is dropped for that reason: Dynamic Type scales by fractional factors,
+    /// so keeping it would put every size back off the grid. Long text uses ``reading``,
+    /// which is a system face and scales properly.
     static func pixel(_ size: CGFloat, bold: Bool = true,
                       relativeTo style: Font.TextStyle = .body) -> Font {
-        .custom(bold ? display : text, size: size.rounded(), relativeTo: style)
+        .custom(bold ? display : text, fixedSize: (size / grid).rounded() * grid)
     }
+
+    /// Pixelify Sans is drawn on a 2-unit grid, so even sizes land on whole pixels.
+    private static let grid: CGFloat = 2
 
     /// Long card text stays in a screen face — a pixel font at reading length is a chore.
     static func reading(_ size: CGFloat, _ weight: Font.Weight = .medium) -> Font {
@@ -95,7 +107,8 @@ extension Font {
     static let brandTitle = pixel(26, relativeTo: .title)
     static let brandLabel = pixel(18, relativeTo: .headline)
     static let brandCaption = pixel(15, bold: false, relativeTo: .caption)
-    static let brandNumber = pixel(22, relativeTo: .title3)
+    /// Numbers carry the score, so they read a size up from a label.
+    static let brandNumber = pixel(26, relativeTo: .title3)
 
     /// The two faces used for card and answer text, where length varies wildly.
     static let brandCard = reading(26, .semibold)

@@ -8,10 +8,19 @@ struct QuizView: View {
     @Environment(StatsStore.self) private var stats
     let onClose: () -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var picked: Choice?
     @State private var flagging = false
     /// Bumped on every wrong answer; the screen shakes once each time it changes.
     @State private var misses = 0
+    /// When the question on screen was dealt, and whether you left the app while it stood.
+    /// A question you walked away from can't be a fast one, and tracking the stopwatch
+    /// across a suspend to work that out costs more than it's worth.
+    @State private var shownAt = Date()
+    @State private var wentAway = false
+    /// What the last answer paid, shown briefly on the card that earned it.
+    @State private var gain: Int?
     /// Held so a dismissed or restarted session can't be advanced by the previous one's timer.
     @State private var advance: Task<Void, Never>?
 
@@ -43,10 +52,22 @@ struct QuizView: View {
         .animation(Motion.deal, value: session.position)
         .animation(Motion.deal, value: session.isFinished)
         .animation(Motion.pop, value: flagging)
+        .animation(Motion.pop, value: gain)
         .safeAreaInset(edge: .top) { header }
+        .onChange(of: session.position) { _, _ in
+            shownAt = Date()
+            wentAway = false
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { wentAway = true }
+        }
         // Banked the moment the last question lands, so a run that ends the way it's meant
         // to is never lost to the app being killed on the score screen.
-        .onChange(of: session.isFinished) { _, finished in if finished { bank() } }
+        .onChange(of: session.isFinished) { _, finished in
+            guard finished else { return }
+            session.score.finish()   // pays the perfect bonus before the run is banked
+            bank()
+        }
         .onDisappear {
             advance?.cancel()
             bank()
@@ -74,6 +95,11 @@ struct QuizView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .breathing(0.7, period: 3.3)
+            .overlay(alignment: .bottom) {
+                if let gain {
+                    GainBadge(gain: gain)
+                }
+            }
 
             Spacer(minLength: 0)
 
@@ -105,12 +131,7 @@ struct QuizView: View {
             ProgressTrack(value: session.position, total: session.total,
                           label: "Question \(min(session.position + 1, session.total)) of \(session.total)")
 
-            Text("\(session.correctCount)")
-                .font(.brandNumber)
-                .foregroundStyle(Brand.green)
-                .frame(minWidth: 30)
-                .contentTransition(.numericText())
-                .accessibilityLabel("\(session.correctCount) correct so far")
+            ScoreReadout(score: session.score)
 
             let flagged = flags.reason(for: session.current) != nil
             HeaderChip(glyph: flagged ? .flagFilled : .flag,
@@ -131,8 +152,9 @@ struct QuizView: View {
     private func answer(_ choice: Choice) {
         guard picked == nil else { return }
         picked = choice
-        session.record(choice.isCorrect)
+        session.record(choice.isCorrect, elapsed: wentAway ? .infinity : Date().timeIntervalSince(shownAt))
         if choice.isCorrect {
+            gain = session.score.lastGain
             Haptics.correct()
         } else {
             Haptics.wrong()
@@ -144,20 +166,28 @@ struct QuizView: View {
             try? await Task.sleep(for: .seconds(choice.isCorrect ? 0.55 : 0.95))
             guard !Task.isCancelled else { return }
             picked = nil
+            gain = nil
             session.next()
         }
     }
 
     private func review() {
         advance?.cancel()
-        session = StudySession(cards: session.missedCards)
-        picked = nil
+        session = StudySession(cards: session.missedCards, dayStreak: session.dayStreak)
+        reset()
     }
 
     private func restart() {
         advance?.cancel()
         session.restart()
+        reset()
+    }
+
+    private func reset() {
         picked = nil
+        gain = nil
+        shownAt = Date()
+        wentAway = false
     }
 }
 
@@ -217,17 +247,26 @@ private struct ScoreCard: View {
     let onDone: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Counts up to `score` on arrival, the way a chip total does.
+    /// Counts up to `percent` on arrival, the way a chip total does.
     @State private var shown = 0
 
     private var missed: [Card] { session.missedCards }
-    private var score: Int {
+    private var percent: Int {
         guard session.total > 0 else { return 0 }
         return Int((Double(session.correctCount) / Double(session.total) * 100).rounded())
     }
     private var tint: Color {
-        if score >= 80 { return Brand.green }
-        return score >= 50 ? Brand.gold : Brand.mult
+        if percent >= 80 { return Brand.green }
+        return percent >= 50 ? Brand.gold : Brand.mult
+    }
+
+    /// The line under the points. A perfect run says so and nothing else — it already tells
+    /// you the streak went the distance.
+    private var footnote: String {
+        let score = session.score
+        if score.perfectBonus > 0 { return "perfect run · +\(score.perfectBonus)" }
+        if score.bestStreak >= 3 { return "points · best run of \(score.bestStreak)" }
+        return "points"
     }
 
     var body: some View {
@@ -238,14 +277,27 @@ private struct ScoreCard: View {
                 .font(.pixel(72, relativeTo: .largeTitle))
                 .foregroundStyle(tint)
                 .shadow(color: Brand.outline, radius: 0, x: 3, y: 4)
-                .scaleEffect(shown == score && score > 0 ? 1 : 0.9)
-                .animation(Motion.pop(reduceMotion), value: shown == score)
+                .scaleEffect(shown == percent && percent > 0 ? 1 : 0.9)
+                .animation(Motion.pop(reduceMotion), value: shown == percent)
 
             Text(session.isEmpty
                  ? "No questions in these sets."
                  : "\(session.correctCount) of \(session.total) right")
                 .font(.brandLabel)
                 .foregroundStyle(Brand.inkDim)
+
+            if session.score.total > 0 {
+                VStack(spacing: 2) {
+                    Text("\(session.score.total)")
+                        .font(.pixel(36, relativeTo: .title))
+                        .foregroundStyle(Brand.gold)
+                        .shadow(color: Brand.outline, radius: 0, x: 2, y: 2)
+                    Text(footnote)
+                        .font(.brandCaption)
+                        .foregroundStyle(session.score.perfectBonus > 0 ? Brand.green : Brand.inkDim)
+                }
+                .padding(.top, 4)
+            }
 
             Spacer()
 
@@ -269,13 +321,63 @@ private struct ScoreCard: View {
 
     /// Ticks the number up rather than snapping it, so the result lands as an event.
     private func rollUp() async {
-        score >= 50 ? Haptics.correct() : Haptics.knock()
-        guard !reduceMotion, score > 0 else { shown = score; return }
-        let step = max(1, score / 24)
-        while shown < score {
-            shown = min(score, shown + step)
+        percent >= 50 ? Haptics.correct() : Haptics.knock()
+        guard !reduceMotion, percent > 0 else { shown = percent; return }
+        let step = max(1, percent / 24)
+        while shown < percent {
+            shown = min(percent, shown + step)
             Haptics.tap()
             try? await Task.sleep(for: .milliseconds(28))
         }
+    }
+}
+
+/// "×2" rather than "×2.0" — only the half step a daily streak pays needs a decimal.
+private func multText(_ value: Double) -> String {
+    value == value.rounded() ? "×\(Int(value))" : "×\(String(format: "%.1f", value))"
+}
+
+/// The running total, with the mult riding beside it. The mult shows only once it's paying
+/// more than ×1: a permanent ×1 is furniture.
+private struct ScoreReadout: View {
+    let score: ScoreRun
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text("\(score.total)")
+                .font(.brandNumber)
+                .foregroundStyle(Brand.gold)
+                .contentTransition(.numericText())
+            if score.pendingMult > 1 {
+                Text(multText(score.pendingMult))
+                    .font(.brandCaption)
+                    .foregroundStyle(Brand.mult)
+                    .contentTransition(.numericText())
+            }
+        }
+        .frame(minWidth: 34)
+        .accessibilityElement()
+        .accessibilityLabel("\(score.total) points, next answer worth \(multText(score.pendingMult))")
+    }
+}
+
+/// What the answer just paid, rising off the card that earned it.
+private struct GainBadge: View {
+    let gain: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lifted = false
+
+    var body: some View {
+        Text("+\(gain)")
+            .font(.brandNumber)
+            .foregroundStyle(Brand.gold)
+            .shadow(color: Brand.outline, radius: 0, x: 2, y: 2)
+            .offset(y: lifted ? -40 : 4)
+            .opacity(lifted ? 0 : 1)
+            .accessibilityHidden(true)
+            .task {
+                guard !reduceMotion else { return }
+                withAnimation(.easeOut(duration: 0.6)) { lifted = true }
+            }
     }
 }

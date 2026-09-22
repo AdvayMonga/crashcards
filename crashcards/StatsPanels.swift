@@ -52,7 +52,13 @@ struct StatsPanels: View {
                 StatRow(label: "Day streak", value: Self.days(stats.dayStreak))
             }
             PanelRow {
-                StatRow(label: "Longest streak", value: Self.days(stats.longestDayStreak))
+                StatRow(label: "Longest day streak", value: Self.days(stats.longestDayStreak))
+            }
+            PanelRow {
+                StatRow(label: "Best run", value: "\(stats.bestScore)")
+            }
+            PanelRow {
+                StatRow(label: "Best answer streak", value: "\(stats.bestStreak)")
             }
         }
     }

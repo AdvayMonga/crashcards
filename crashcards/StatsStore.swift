@@ -160,6 +160,13 @@ final class StatsStore {
         return Int((Double(part) / Double(whole) * 100).rounded())
     }
 
+    /// Wall-clock time, capped at a minute a card: a session left open in your pocket
+    /// shouldn't read as an hour of study. Floored at zero too — the clock can move
+    /// backwards under you, and a lifetime total has nothing to correct itself against.
+    static func studySeconds(since start: Date, answered: Int) -> Int {
+        max(0, min(Int(Date().timeIntervalSince(start)), answered * 60))
+    }
+
     private static let formatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

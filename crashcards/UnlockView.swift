@@ -17,6 +17,7 @@ struct UnlockView: View {
 
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(StatsStore.self) private var stats
 
     /// What the card is showing, in the order it was turned to. Index 0 is always the mask.
     private enum Face {
@@ -32,6 +33,9 @@ struct UnlockView: View {
     @State private var landing: CGFloat = 1
     @State private var picked: Choice?
     @State private var correct = 0
+    @State private var answered = 0
+    @State private var startedAt = Date()
+    @State private var recorded = false
     @State private var returnFailed = false
     @State private var misses = 0
 
@@ -58,6 +62,7 @@ struct UnlockView: View {
         }
         .safeAreaInset(edge: .top) { header }
         .task { await land() }
+        .onDisappear { bank(unlocked: false) }
     }
 
     // MARK: - The gate
@@ -257,6 +262,7 @@ struct UnlockView: View {
     private func answer(_ choice: Choice) {
         guard picked == nil else { return }
         picked = choice
+        answered += 1
         if choice.isCorrect {
             correct += 1
             Haptics.correct()
@@ -270,6 +276,7 @@ struct UnlockView: View {
             picked = nil
             if correct >= needed {
                 manager.unlock()
+                bank(unlocked: true)
                 Haptics.thud()
                 deal(.joker)
                 if let target { goToTarget(target) }
@@ -279,6 +286,19 @@ struct UnlockView: View {
                 deal(.joker)
             }
         }
+    }
+
+    /// The gate isn't scored — that's quiz mode's job — but its questions are still
+    /// questions, so they count toward what you've answered and how accurate you are.
+    ///
+    /// Banked the instant the gate clears rather than when the view goes away: clearing it
+    /// hands you to another app, which can background this one first.
+    private func bank(unlocked: Bool) {
+        guard !recorded, answered > 0 else { return }
+        recorded = true
+        stats.record(StudyRun(answered: answered, correct: correct,
+                              seconds: StatsStore.studySeconds(since: startedAt, answered: answered),
+                              unlocks: unlocked ? 1 : 0))
     }
 
     /// Hand you back to the app you were opening.

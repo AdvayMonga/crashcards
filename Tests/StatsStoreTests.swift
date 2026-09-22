@@ -140,4 +140,16 @@ import Testing
         #expect(week[1] == nil)           // nothing yesterday
         #expect(week[2]?.answered == 6)   // today
     }
+
+    // MARK: - Study time
+
+    @Test func capsStudyTimeAtAMinuteACard() {
+        let anHourAgo = Date().addingTimeInterval(-3600)
+        #expect(StatsStore.studySeconds(since: anHourAgo, answered: 2) == 120)
+    }
+
+    @Test func neverReportsNegativeStudyTime() {
+        let future = Date().addingTimeInterval(3600)   // the clock moved back mid-session
+        #expect(StatsStore.studySeconds(since: future, answered: 5) == 0)
+    }
 }

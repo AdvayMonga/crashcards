@@ -53,4 +53,55 @@ import Testing
         #expect(session.isFinished)
         #expect(session.current == nil)
     }
+
+    // MARK: - Handing the run to the stats store
+
+    @Test func hasNothingToRecordBeforeAnythingIsAnswered() {
+        let session = StudySession(cards: deck(3))
+        #expect(session.consumeRun() == nil)
+    }
+
+    @Test func recordsTheRunOnlyOnce() {
+        let session = StudySession(cards: deck(2))
+        session.record(true)
+        session.next()
+
+        let run = session.consumeRun()
+        #expect(run?.answered == 1)
+        #expect(session.consumeRun() == nil)
+    }
+
+    @Test func aRunLeftPartWayThroughIsNotComplete() {
+        let session = StudySession(cards: deck(3))
+        session.record(true)
+        session.next()
+
+        let run = session.consumeRun()
+        #expect(run?.isComplete == false)
+        #expect(run?.correct == 1)
+    }
+
+    @Test func aRunPlayedToTheEndIsComplete() {
+        let session = StudySession(cards: deck(2))
+        session.record(true)
+        session.next()
+        session.record(false)
+        session.next()
+
+        let run = session.consumeRun()
+        #expect(run?.isComplete == true)
+        #expect(run?.answered == 2)
+        #expect(run?.correct == 1)
+    }
+
+    @Test func startingOverMakesAFreshRunToRecord() {
+        let session = StudySession(cards: deck(2))
+        session.record(true)
+        session.next()
+        _ = session.consumeRun()
+
+        session.restart()
+        session.record(true)
+        #expect(session.consumeRun()?.answered == 1)
+    }
 }

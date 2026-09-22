@@ -180,6 +180,18 @@ extension PixelGlyph {
         ".........",
         ".........")
 
+    /// Lid, handle, and a body with two staves cut out of it.
+    static let trash = PixelGlyph(
+        "...###...",
+        ".#######.",
+        ".........",
+        "#########",
+        "#.#.#.#.#",
+        "#.#.#.#.#",
+        "#.#.#.#.#",
+        "#.......#",
+        ".#######.")
+
     static let copy = PixelGlyph(
         ".........",
         "...######",

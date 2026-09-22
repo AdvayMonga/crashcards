@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 /// Study tab: pick which sets to study, then start a shuffled session in one of the modes.
 ///
@@ -16,6 +17,11 @@ struct SetListView: View {
     @State private var renaming: FlashcardSet?
     @State private var deleting: FlashcardSet?
     @State private var newTitle = ""
+    /// Picking sets to delete rather than to study. The two selections are kept apart so
+    /// leaving this mode doesn't cost you the sets you had lined up.
+    @State private var culling = false
+    @State private var marked: Set<String> = []
+    @State private var confirmingCull = false
 
     private var selectedSets: [FlashcardSet] {
         library.sets.filter { selected.contains($0.id) }
@@ -46,6 +52,8 @@ struct SetListView: View {
             .overlay { setDialogs }
             .animation(Motion.pop, value: renaming?.id)
             .animation(Motion.pop, value: deleting?.id)
+            .animation(Motion.pop, value: confirmingCull)
+            .animation(Motion.settle, value: culling)
             .onChange(of: library.sets.map(\.id)) { _, ids in
                 // Only prune against a scan that actually saw everything. A folder that is
                 // offline, moved, or not yet downloaded from iCloud is reported as a
@@ -117,6 +125,13 @@ struct SetListView: View {
                 }
                 .buttonStyle(.solid(Brand.mult))
             }
+        } else if confirmingCull {
+            CrashDialog(title: markedSets.count == 1 ? "Delete this set?" : "Delete \(markedSets.count) sets?",
+                        message: "\(markedNames) will be removed from the app's library. This can't be undone.",
+                        onCancel: { confirmingCull = false }) {
+                Button("Delete") { cull() }
+                    .buttonStyle(.solid(Brand.mult))
+            }
         }
     }
 
@@ -148,9 +163,12 @@ struct SetListView: View {
                 VStack(spacing: 12) {
                     if hasProblems { problemBanner }
                     ForEach(library.sets) { set in
-                        Button { toggle(set.id) } label: { row(for: set) }
+                        Button { tap(set) } label: { row(for: set) }
                             .buttonStyle(.pressable)
-                            .contextMenu { actions(for: set) }
+                            // A folder's file isn't the app's to delete, so it can't be marked.
+                            .disabled(culling && !set.isLocal)
+                            .opacity(culling && !set.isLocal ? 0.4 : 1)
+                            .contextMenu { if !culling { actions(for: set) } }
                     }
                 }
                 .padding(.horizontal, 18)
@@ -198,11 +216,14 @@ struct SetListView: View {
 
     /// A set, as a card lying on the table. Picking it up lifts it and lights its edge gold.
     private func row(for set: FlashcardSet) -> some View {
-        let isOn = selected.contains(set.id)
+        // While culling, a lit row is one about to be deleted, so it lights red instead
+        // of gold — the same affordance saying the opposite thing.
+        let isOn = culling ? marked.contains(set.id) : selected.contains(set.id)
+        let lit = culling ? Brand.mult : Brand.gold
         return HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isOn ? Brand.gold : Brand.surfaceLedge)
+                    .fill(isOn ? lit : Brand.surfaceLedge)
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .strokeBorder(Brand.outline, lineWidth: 2))
@@ -219,7 +240,7 @@ struct SetListView: View {
                     .foregroundStyle(isOn ? Brand.ink : Brand.ink.opacity(0.85))
                 Text(cardSummary(for: set))
                     .font(.brandCaption)
-                    .foregroundStyle(isOn ? Brand.gold : Brand.inkFaint)
+                    .foregroundStyle(isOn ? lit : Brand.inkFaint)
             }
             Spacer(minLength: 0)
         }
@@ -230,7 +251,7 @@ struct SetListView: View {
               highlight: isOn ? 0.16 : 0.08)
         .overlay(
             RoundedRectangle(cornerRadius: Brand.slabRadius, style: .continuous)
-                .strokeBorder(Brand.gold, lineWidth: isOn ? 2.5 : 0)
+                .strokeBorder(lit, lineWidth: isOn ? 2.5 : 0)
                 .padding(1.5))
         .offset(y: isOn ? -3 : 0)
         .animation(Motion.pop, value: isOn)
@@ -249,24 +270,37 @@ struct SetListView: View {
     @ViewBuilder private var studyBar: some View {
         if !library.sets.isEmpty {
             VStack(spacing: 8) {
-                if selectedSets.isEmpty {
-                    Text("Pick a set to start")
-                        .font(.brandCaption)
-                        .foregroundStyle(Brand.inkFaint)
-                        .transition(.opacity)
-                }
+                Text(barHint)
+                    .font(.brandCaption)
+                    .foregroundStyle(culling ? Brand.mult : Brand.inkFaint)
+                    .opacity(barHint.isEmpty ? 0 : 1)
+                    .transition(.opacity)
 
                 HStack(spacing: 12) {
-                    Button("Flashcards") { start(.flashcards) }
-                        .buttonStyle(.solid(Brand.chips))
-                    Button("Quiz") { start(.quiz) }
-                        .buttonStyle(.solid(Brand.purple))
+                    if culling {
+                        Button("Cancel") { endCulling() }
+                            .buttonStyle(.soft)
+                        Button("Delete") { confirmingCull = true }
+                            .buttonStyle(.solid(Brand.mult))
+                            .disabled(marked.isEmpty)
+                            .opacity(marked.isEmpty ? 0.45 : 1)
+                            .saturation(marked.isEmpty ? 0.3 : 1)
+                    } else {
+                        Group {
+                            Button("Flashcards") { start(.flashcards) }
+                                .buttonStyle(.solid(Brand.chips))
+                            Button("Quiz") { start(.quiz) }
+                                .buttonStyle(.solid(Brand.purple))
+                        }
+                        .disabled(selectedSets.isEmpty)
+                        .opacity(selectedSets.isEmpty ? 0.45 : 1)
+                        .saturation(selectedSets.isEmpty ? 0.3 : 1)
+                    }
                 }
-                .disabled(selectedSets.isEmpty)
-                .opacity(selectedSets.isEmpty ? 0.45 : 1)
-                .saturation(selectedSets.isEmpty ? 0.3 : 1)
             }
             .animation(Motion.settle, value: selectedSets.isEmpty)
+            .animation(Motion.settle, value: culling)
+            .animation(Motion.settle, value: marked.isEmpty)
             .padding(.horizontal, 18)
             .padding(.top, 10)
             .padding(.bottom, Brand.ledge)
@@ -275,14 +309,37 @@ struct SetListView: View {
 
     private var header: some View {
         ScreenHeader(title: "Sets") {
-            if !library.sets.isEmpty {
+            if !library.sets.isEmpty, !culling {
                 Button(allSelected ? "Clear" : "All") { toggleAll() }
                     .buttonStyle(CrashButton(kind: .ghost, tint: Brand.inkDim, fullWidth: false))
             }
-            HeaderChip(glyph: .plus, name: "New set", tint: Brand.gold) {
-                importingSet = true
+            if culling {
+                HeaderChip(glyph: .close, name: "Stop deleting", tint: Brand.inkDim) {
+                    endCulling()
+                }
+            } else {
+                // Only the app's own sets can go, so the way in only appears when there is
+                // one to delete.
+                if library.sets.contains(where: \.isLocal) {
+                    HeaderChip(glyph: .trash, name: "Delete sets", tint: Brand.mult) {
+                        Haptics.knock()
+                        culling = true
+                    }
+                }
+                HeaderChip(glyph: .plus, name: "New set", tint: Brand.gold) {
+                    importingSet = true
+                }
             }
         }
+    }
+
+    /// The line above the buttons: what to do, or what is about to happen.
+    private var barHint: String {
+        if culling {
+            if marked.isEmpty { return "Pick the sets to delete" }
+            return marked.count == 1 ? "1 set will be deleted" : "\(marked.count) sets will be deleted"
+        }
+        return selectedSets.isEmpty ? "Pick a set to start" : ""
     }
 
     private func start(_ mode: StudyMode) {
@@ -290,9 +347,43 @@ struct SetListView: View {
         studyMode = mode
     }
 
-    private func toggle(_ id: String) {
+    private func tap(_ set: FlashcardSet) {
         Haptics.select()
-        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+        if culling {
+            if marked.contains(set.id) { marked.remove(set.id) } else { marked.insert(set.id) }
+        } else if selected.contains(set.id) {
+            selected.remove(set.id)
+        } else {
+            selected.insert(set.id)
+        }
+    }
+
+    private func endCulling() {
+        culling = false
+        marked = []
+    }
+
+    /// Filtered by `isLocal` as well as by mark, so a folder's file can never be caught up
+    /// in a delete even if it somehow got marked.
+    private var markedSets: [FlashcardSet] {
+        library.sets.filter { marked.contains($0.id) && $0.isLocal }
+    }
+
+    /// Named while the list is short enough to read; counted once it isn't.
+    private var markedNames: String {
+        let names = markedSets.map { "“\($0.title)”" }
+        guard names.count <= 3 else { return "\(names.count) sets" }
+        return ListFormatter.localizedString(byJoining: names)
+    }
+
+    /// Only the app's own sets go. A file in an attached folder is yours, and the app has
+    /// never written to those.
+    private func cull() {
+        Haptics.wrong()
+        for set in markedSets { library.deleteSet(set) }
+        selected.subtract(marked)
+        confirmingCull = false
+        endCulling()
     }
     private func toggleAll() {
         Haptics.knock()

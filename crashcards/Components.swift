@@ -26,16 +26,17 @@ struct Slab: ViewModifier {
                     }
                     .overlay(shape.strokeBorder(Brand.outline, lineWidth: Brand.stroke))
             }
-            .background(alignment: .bottom) {
-                // The ledge. Sized to the content and pushed down, so only its lip shows.
+            .background(alignment: .top) {
+                // The ledge: the same shape, grown downwards rather than pushed down.
                 //
-                // Its top is held below the face's corner radius. Without that, the face
-                // curves inward at the top while the ledge behind it is still square, and
-                // a grey wedge shows through each top corner.
+                // Pushing a copy down leaves its top edge and top corners sitting inside
+                // the face's corner curve, where they show through as a grey wedge in each
+                // corner and a line across anything translucent. Grown from the same top
+                // edge, the two shapes' corners coincide exactly and only the lip below
+                // the face is ever visible.
                 shape.fill(fill.opacity(0.001).blended(under: Brand.outline, amount: 0.55))
                     .overlay(shape.strokeBorder(Brand.outline, lineWidth: Brand.stroke))
-                    .padding(.top, radius)
-                    .offset(y: lift)
+                    .padding(.bottom, -lift)
                     .shadow(color: .black.opacity(0.35), radius: 6, y: 4)
             }
     }

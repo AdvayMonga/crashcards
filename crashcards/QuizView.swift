@@ -134,6 +134,9 @@ struct QuizView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 28)
+        // Without this the keyboard shrinks the safe area, the spacers redistribute, and
+        // the question slides up the screen as you start typing.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     /// Only reached for cards that have options: anything else took the typed branch, so
@@ -257,7 +260,11 @@ enum TypedVerdict: Equatable {
     var isRight: Bool { self == .right }
 }
 
-/// The answer box: type it, submit it, or give up and be shown.
+/// The typed answer, wearing the same clothes as a tapped one.
+///
+/// Judged, it becomes the rows a multiple-choice card would show: the answer in green
+/// with a tick, and what you typed in red beneath it when they differ. Same slab, same
+/// glyphs, same colours — the only difference is where the answer came from.
 private struct TypedAnswer: View {
     let accepted: [String]
     let verdict: TypedVerdict?
@@ -265,46 +272,59 @@ private struct TypedAnswer: View {
     let onSubmit: () -> Void
 
     @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var blank: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
         VStack(spacing: 12) {
             if let verdict {
-                // Every accepted spelling, so it's clear what would have counted.
-                VStack(spacing: 4) {
-                    Text(verdict.isRight ? "Right" : accepted.joined(separator: "  ·  "))
-                        .font(.brandLabel)
-                        .foregroundStyle(verdict.isRight ? Brand.green : Brand.gold)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if case .wrong = verdict, !text.isEmpty {
-                        Text("you said “\(text)”")
-                            .font(.brandCaption)
-                            .foregroundStyle(Brand.inkFaint)
-                    }
+                AnswerRow(text: accepted[0], tint: Brand.green, glyph: .check)
+                    .scaleEffect(verdict.isRight ? 1.05 : 1)
+                    .animation(Motion.pop(reduceMotion), value: verdict)
+                if !verdict.isRight, !text.isEmpty {
+                    AnswerRow(text: text, tint: Brand.mult, glyph: .close)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .padding(.horizontal, 16)
-                .slab(verdict.isRight ? Brand.surfaceHigh : Brand.surface)
-                .transition(.scale(scale: 0.96).combined(with: .opacity))
             } else {
-                CrashField(placeholder: "Type your answer", text: $text, minHeight: 44)
+                CrashField(placeholder: "Type your answer", text: $text)
                     .focused($focused)
                     .submitLabel(.done)
-                    .onSubmit(onSubmit)
+                    .onSubmit { if !blank { onSubmit() } }
 
                 Button("Check") { onSubmit() }
                     .buttonStyle(.solid(Brand.chips))
-                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .opacity(text.trimmingCharacters(in: .whitespaces).isEmpty ? 0.45 : 1)
+                    .disabled(blank)
+                    .opacity(blank ? 0.45 : 1)
             }
         }
-        // Four options at 17pt with 16pt of padding, three 12pt gaps between them — the
-        // region a multiple-choice card fills. Holding it means the question card doesn't
-        // jump down the screen when the next card happens to be typed.
-        .frame(maxWidth: .infinity, minHeight: 240, alignment: .top)
-        .animation(Motion.pop, value: verdict)
+        // Fixed, so the question above doesn't slide when the field gives way to the
+        // verdict — two rows and a field-plus-button come to about the same height.
+        .frame(maxWidth: .infinity, minHeight: 124, alignment: .top)
         .onAppear { focused = true }
+    }
+}
+
+/// One judged row, drawn the way `OptionRow` draws a judged option.
+private struct AnswerRow: View {
+    let text: String
+    let tint: Color
+    let glyph: PixelGlyph
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(text)
+                .font(.brandBody)
+                .multilineTextAlignment(.leading)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            PixelIcon(glyph: glyph, size: 18, color: Brand.outline)
+        }
+        .foregroundStyle(Brand.outline)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .slab(tint, lift: 0, highlight: 0.22)
+        .transition(.scale(scale: 0.96).combined(with: .opacity))
     }
 }
 

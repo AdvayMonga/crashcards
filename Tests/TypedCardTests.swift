@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import crashcards
 
 struct TypedCardTests {
@@ -59,6 +60,28 @@ struct TypedCardTests {
         let card = Card(content: .flip(front: "Capital of France", back: "Paris"),
                         setID: "s", setTitle: "S")
         #expect(card.typedAnswers == ["Paris"])
+    }
+
+    /// Selecting a typed deck and a multiple-choice one has to give a run containing both,
+    /// graded together — not one kind silently dropped.
+    @Test func aQuizCanMixTypedAndMultipleChoice() throws {
+        let riddles = try deck("Riddles")
+        let facts = try deck("Weird But True")
+        let run = StudyMode.quiz.usableCards(in: [riddles, facts])
+
+        // Counted rather than asked with `contains`, which is rethrows and trips #expect.
+        let typed = run.filter { $0.typedAnswers != nil }.count
+        let multipleChoice = run.filter(\.isMultipleChoice).count
+
+        #expect(run.count == riddles.cards.count + facts.cards.count)
+        #expect(typed == riddles.cards.count)
+        #expect(multipleChoice == facts.cards.count)
+    }
+
+    private func deck(_ name: String) throws -> FlashcardSet {
+        let url = try #require(Bundle.main.url(forResource: name, withExtension: "md"))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        return MarkdownParser.parse(text, filename: "\(name).md").set
     }
 
     @Test func typedCardsSurviveARoundTripThroughMarkdown() throws {

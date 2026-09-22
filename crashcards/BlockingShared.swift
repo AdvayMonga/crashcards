@@ -3,6 +3,15 @@ import FamilyControls
 import ManagedSettings
 import DeviceActivity
 
+/// The shield tap that brought you into the app: which app, what it's called, and when.
+/// The token is nil when a category, not an app, was shielded; the name is nil when iOS
+/// wouldn't say — the app can still draw the token with FamilyControls' `Label`.
+struct PendingGate: Codable {
+    var token: ApplicationToken?
+    var name: String?
+    var at: Date
+}
+
 /// State shared between the app and its Screen Time extensions, via the App Group.
 /// The extensions run in their own processes, so this is the only channel between them.
 enum BlockingShared {
@@ -21,6 +30,7 @@ enum BlockingShared {
     private static let schedulesKey = "focusSchedules"
     private static let questionsKey = "questionsToUnlock"
     private static let minutesKey = "unlockMinutes"
+    private static let gateKey = "pendingGate"
 
     static var selection: FamilyActivitySelection {
         get {
@@ -47,6 +57,22 @@ enum BlockingShared {
     static var isUnlocked: Bool {
         guard let until = unlockedUntil else { return false }
         return until > Date()
+    }
+
+    /// Written by the shield action extension when Answer is tapped; read once by the app.
+    static var pendingGate: PendingGate? {
+        get {
+            guard let data = defaults.data(forKey: gateKey) else { return nil }
+            return try? JSONDecoder().decode(PendingGate.self, from: data)
+        }
+        set { defaults.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: gateKey) }
+    }
+
+    /// The tap that brought you here, if it was recent enough to still be why you're here.
+    static func takePendingGate() -> PendingGate? {
+        guard let gate = pendingGate else { return nil }
+        pendingGate = nil
+        return Date().timeIntervalSince(gate.at) < 5 * 60 ? gate : nil
     }
 
     // MARK: - Schedules

@@ -71,6 +71,7 @@ struct RootView: View {
         .animation(Motion.deal, value: share?.id)
         .animation(Motion.pop, value: flags.writeError)
         .task {
+            StarterDecks.seedIfNeeded()   // before the first scan, so they appear on launch
             reload()
             collectShare()
         }

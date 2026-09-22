@@ -169,13 +169,17 @@ struct CrashButton: ButtonStyle {
              pressed: configuration.isPressed, label: configuration.label)
     }
 
-    /// A view rather than inline chrome so `@Environment` (Reduce Motion) resolves.
+    /// A view rather than inline chrome so `@Environment` (Reduce Motion, `isEnabled`) resolves.
     private struct Face<Label: View>: View {
         let kind: Kind
         let tint: Color
         let fullWidth: Bool
         let pressed: Bool
         let label: Label
+
+        /// `.disabled()` stops the tap on its own but changes nothing about how a custom
+        /// style draws, so without this a dead button is indistinguishable from a live one.
+        @Environment(\.isEnabled) private var isEnabled
 
         var body: some View {
             let content = label
@@ -190,12 +194,16 @@ struct CrashButton: ButtonStyle {
                     content.opacity(pressed ? 0.55 : 1)
                 } else {
                     content
-                        .slab(background, lift: pressed ? 0 : Brand.ledge,
+                        // Sunk flat when dead: a slab still standing off its ledge reads
+                        // as something waiting to be pressed.
+                        .slab(background, lift: pressed || !isEnabled ? 0 : Brand.ledge,
                               highlight: kind == .solid ? 0.22 : 0.06)
                         .modifier(Squash(pressed: pressed))
                 }
             }
             .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : Brand.deadOpacity)
+            .saturation(isEnabled ? 1 : Brand.deadSaturation)
         }
 
         private var foreground: Color {
@@ -228,9 +236,24 @@ struct PressableRow: ButtonStyle {
     var depth: CGFloat = 3
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .modifier(Squash(pressed: configuration.isPressed, depth: depth))
-            .contentShape(Rectangle())
+        Face(depth: depth, pressed: configuration.isPressed, label: configuration.label)
+    }
+
+    /// A view so `isEnabled` resolves — see `CrashButton.Face`.
+    private struct Face<Label: View>: View {
+        let depth: CGFloat
+        let pressed: Bool
+        let label: Label
+
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            label
+                .modifier(Squash(pressed: pressed, depth: depth))
+                .contentShape(Rectangle())
+                .opacity(isEnabled ? 1 : Brand.deadOpacity)
+                .saturation(isEnabled ? 1 : Brand.deadSaturation)
+        }
     }
 }
 
@@ -425,15 +448,15 @@ struct CrashStepper: View {
         }
     }
 
+    /// A key at the end of its range is drawn dead by the style, like every other control.
     private func key(_ glyph: PixelGlyph, by delta: Int, enabled: Bool) -> some View {
         Button {
             Haptics.tap()
             value = min(range.upperBound, max(range.lowerBound, value + delta))
         } label: {
-            PixelIcon(glyph: glyph, size: 14, color: enabled ? Brand.outline : Brand.inkFaint)
+            PixelIcon(glyph: glyph, size: 14, color: Brand.outline)
                 .frame(width: 38, height: 34)
-                .slab(enabled ? Brand.gold : Brand.surfaceLedge, radius: 9, lift: 3,
-                      highlight: enabled ? 0.22 : 0.04)
+                .slab(Brand.gold, radius: 9, lift: 3, highlight: 0.22)
         }
         .buttonStyle(.pressable)
         .disabled(!enabled)

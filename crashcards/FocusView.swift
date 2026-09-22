@@ -86,13 +86,24 @@ struct FocusView: View {
             }
 
             if manager.isShieldActive {
+                // The gate's own rule, so the button can't offer a quiz it would then
+                // refuse to run — deleting your last set while blocked ends up here.
+                let canAnswer = !UnlockView.answerable(in: library.quizCards).isEmpty
                 Button("Answer \(manager.questionsToUnlock) \(manager.questionsToUnlock == 1 ? "question" : "questions") to unlock") {
                     Haptics.thud()
                     unlocking = true
                 }
                 .buttonStyle(.solid)
-                .disabled(library.quizCards.isEmpty)
+                .disabled(!canAnswer)
                 .padding(.top, 4)
+
+                if !canAnswer {
+                    Text("No questions to ask. Add a set on the Study tab, or turn blocking off below.")
+                        .font(.reading(14))
+                        .foregroundStyle(Brand.inkDim)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .frame(maxWidth: .infinity)

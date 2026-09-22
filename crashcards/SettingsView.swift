@@ -12,6 +12,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                StatsPanels()
                 foldersPanel
                 libraryPanel
             }

@@ -49,33 +49,4 @@ enum DeckPrompt {
 
     Make as many cards as the material genuinely supports. If I gave you source material, cover all of it rather than stopping at a round number. Stop at 200 cards.
     """
-
-    /// A chatbot worth sending the prompt to.
-    ///
-    /// The `https://` links are deliberate: iOS opens the provider's app when it's installed
-    /// and falls back to the browser when it isn't, which a custom scheme can't do.
-    struct Provider: Identifiable {
-        let id: String
-        let name: String
-        /// Nil where the provider has no documented way to prefill a new chat.
-        private let query: String?
-        private let home: String
-
-        func url(prompt: String) -> URL? {
-            guard let query,
-                  let escaped = prompt.addingPercentEncoding(withAllowedCharacters: .alphanumerics)
-            else { return URL(string: home) }
-            return URL(string: query + escaped) ?? URL(string: home)
-        }
-
-        static let all = [
-            Provider(id: "claude", name: "Claude",
-                     query: "https://claude.ai/new?q=", home: "https://claude.ai"),
-            Provider(id: "chatgpt", name: "ChatGPT",
-                     query: "https://chatgpt.com/?q=", home: "https://chatgpt.com"),
-            // Gemini has no prefill parameter, so it opens cold and relies on the clipboard.
-            Provider(id: "gemini", name: "Gemini",
-                     query: nil, home: "https://gemini.google.com/app"),
-        ]
-    }
 }

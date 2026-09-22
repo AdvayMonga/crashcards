@@ -100,7 +100,7 @@ struct ImportSetView: View {
             }
             PanelRow {
                 HStack(spacing: 10) {
-                    ForEach(DeckPrompt.Provider.all) { provider in
+                    ForEach(AIProvider.all) { provider in
                         Button(provider.name) { open(provider) }
                             .buttonStyle(CrashButton(kind: .soft, tint: Brand.chips, fullWidth: false))
                     }
@@ -121,7 +121,8 @@ struct ImportSetView: View {
         withAnimation(Motion.pop) { copiedPrompt = true }
     }
 
-    private func open(_ provider: DeckPrompt.Provider) {
+    private func open(_ provider: AIProvider) {
+        Prefs.preferredProviderID = provider.id   // "Explain" follows what you reach for here
         let prompt = DeckPrompt.text(topic: topic)
         UIPasteboard.general.string = prompt
         if let url = provider.url(prompt: prompt) { openURL(url) }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Flashcards: a stack of cards on the table. Swipe the top one away for the next, tap to
 /// flip it over.
@@ -8,6 +9,7 @@ import SwiftUI
 struct CardDeckView: View {
     @Environment(FlagStore.self) private var flags
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     let onClose: () -> Void
 
     /// Shuffled once, on entry. The library re-scans on every foreground, so holding the
@@ -160,6 +162,14 @@ struct CardDeckView: View {
         position = 0
     }
 
+    private func explainCurrent() {
+        guard let card = currentCard else { return }
+        Haptics.tap()
+        let prompt = ExplainPrompt.text(for: [card])
+        UIPasteboard.general.string = prompt
+        if let url = AIProvider.preferred.url(prompt: prompt) { openURL(url) }
+    }
+
     private func toggleFlip(_ card: Card) {
         Haptics.knock()
         withAnimation(reduceMotion ? .easeInOut(duration: 0.22)
@@ -174,6 +184,13 @@ struct CardDeckView: View {
 
             ProgressTrack(value: min(position + 1, deck.count), total: deck.count,
                           label: "Card \(min(position + 1, deck.count)) of \(deck.count)")
+
+            // Only once the answer is showing: explaining a card you haven't attempted
+            // hands you the answer instead of teaching you anything.
+            let turned = currentCard.map { flipped.contains($0.id) } ?? false
+            HeaderChip(glyph: .question, name: "Explain this card",
+                       tint: turned ? Brand.chips : Brand.inkFaint) { explainCurrent() }
+                .disabled(!turned)
 
             let flagged = flags.reason(for: currentCard) != nil
             HeaderChip(glyph: flagged ? .flagFilled : .flag,

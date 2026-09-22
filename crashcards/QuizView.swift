@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Quiz: one question at a time, graded. Answering moves you on by itself — right or wrong,
 /// you see the result for a beat and the next question arrives. No next button to hunt for.
@@ -247,6 +248,7 @@ private struct ScoreCard: View {
     let onDone: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     /// Counts up to `percent` on arrival, the way a chip total does.
     @State private var shown = 0
 
@@ -305,6 +307,13 @@ private struct ScoreCard: View {
                 if !missed.isEmpty {
                     Button("Practise \(missed.count) missed") { onReview() }
                         .buttonStyle(.solid)
+                    // The end of the run, not the moment of answering: a wrong answer moves
+                    // you on by itself, and stopping the quiz dead to leave for a chat app
+                    // would undo the thing that makes it a quiz.
+                    Button("Explain \(missed.count) missed with \(AIProvider.preferred.name)") {
+                        explainMissed()
+                    }
+                    .buttonStyle(.soft(Brand.chips))
                 }
                 if !session.isEmpty {
                     Button("Start over") { onRestart() }
@@ -317,6 +326,13 @@ private struct ScoreCard: View {
         .padding(.horizontal, 26)
         .padding(.bottom, 26)
         .task { await rollUp() }
+    }
+
+    private func explainMissed() {
+        Haptics.tap()
+        let prompt = ExplainPrompt.text(for: missed)
+        UIPasteboard.general.string = prompt
+        if let url = AIProvider.preferred.url(prompt: prompt) { openURL(url) }
     }
 
     /// Ticks the number up rather than snapping it, so the result lands as an event.

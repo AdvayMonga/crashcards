@@ -241,13 +241,9 @@ struct SetListView: View {
 
     /// Card count, split by kind so it's obvious which sets a quiz can use.
     private func cardSummary(for set: FlashcardSet) -> String {
-        let total = set.cards.count == 1 ? "1 card" : "\(set.cards.count) cards"
-        let questions = set.multipleChoiceCount
-        // Every set can be quizzed now, so this says what answering feels like rather than
-        // whether quiz mode will open at all.
-        guard questions > 0 else { return "\(total) · typed" }
-        if questions == set.cards.count { return "\(total) · multiple choice" }
-        return "\(total) · \(questions) multiple choice"
+        // Just the count. Every set can be quizzed whatever its cards look like, so naming
+        // the answer style here only added a distinction you don't act on.
+        set.cards.count == 1 ? "1 card" : "\(set.cards.count) cards"
     }
 
     @ViewBuilder private var studyBar: some View {

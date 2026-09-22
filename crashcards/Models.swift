@@ -77,7 +77,6 @@ struct FlashcardSet: Identifiable, Hashable {
     /// Where the set was read from. Nil only for sets built in memory (imports, tests).
     var fileURL: URL?
 
-    var multipleChoiceCount: Int { cards.filter(\.isMultipleChoice).count }
     var flipCount: Int { cards.filter(\.isFlip).count }
 }
 

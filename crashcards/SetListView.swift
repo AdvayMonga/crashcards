@@ -313,15 +313,12 @@ struct SetListView: View {
                 Button(allSelected ? "Clear" : "All") { toggleAll() }
                     .buttonStyle(CrashButton(kind: .ghost, tint: Brand.inkDim, fullWidth: false))
             }
-            if culling {
-                HeaderChip(glyph: .close, name: "Stop deleting", tint: Brand.inkDim) {
-                    endCulling()
-                }
-            } else {
+            // The way out is Cancel in the bar below, so the header offers no second one.
+            if !culling {
                 // Only the app's own sets can go, so the way in only appears when there is
                 // one to delete.
                 if library.sets.contains(where: \.isLocal) {
-                    HeaderChip(glyph: .trash, name: "Delete sets", tint: Brand.mult) {
+                    HeaderChip(glyph: .trash, name: "Delete sets", tint: Brand.gold) {
                         Haptics.knock()
                         culling = true
                     }

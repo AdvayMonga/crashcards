@@ -35,7 +35,7 @@ struct UnlockView: View {
     @State private var returnFailed = false
     @State private var misses = 0
 
-    private var needed: Int { ScreenTimeManager.questionsToUnlock }
+    private var needed: Int { manager.questionsToUnlock }
     private var unlocked: Bool {
         if case .joker = faces[showing] { return true }
         return false
@@ -67,7 +67,7 @@ struct UnlockView: View {
             VStack(spacing: 8) {
                 ProgressTrack(value: correct, total: needed,
                               label: "\(correct) of \(needed) correct")
-                Text(unlocked ? "Unlocked for \(ScreenTimeManager.unlockMinutes) minutes"
+                Text(unlocked ? "Unlocked for \(manager.unlockMinutes) minutes"
                               : "\(correct) of \(needed) correct")
                     .font(.brandCaption)
                     .foregroundStyle(unlocked ? Brand.green : Brand.inkDim)

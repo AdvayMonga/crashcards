@@ -11,6 +11,7 @@ struct FocusView: View {
     @State private var gatedApps = GatedApps.all
     @State private var addingApp = false
     @State private var copied: String?
+    @State private var editing: FocusSchedule?
 
     /// Keeps the countdown honest while the screen is open.
     private let tick = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
@@ -20,6 +21,8 @@ struct FocusView: View {
             VStack(spacing: 16) {
                 status
                 blockingPanel
+                schedulePanel
+                unlockPanel
                 gatedPanel
                 appsPanel
                 if let error = manager.errorText {
@@ -45,6 +48,11 @@ struct FocusView: View {
         }
         .screenLayer(isPresented: $unlocking) {
             UnlockView(cards: library.quizCards, manager: manager) { unlocking = false }
+        }
+        .screenLayer(item: $editing) { draft in
+            ScheduleEditorView(schedule: draft,
+                               onSave: { manager.addSchedule($0) },
+                               onClose: { editing = nil })
         }
         .onReceive(tick) { _ in manager.refresh() }
     }
@@ -75,7 +83,7 @@ struct FocusView: View {
             }
 
             if manager.isShieldActive {
-                Button("Answer \(ScreenTimeManager.questionsToUnlock) questions to unlock") {
+                Button("Answer \(manager.questionsToUnlock) \(manager.questionsToUnlock == 1 ? "question" : "questions") to unlock") {
                     Haptics.thud()
                     unlocking = true
                 }
@@ -90,9 +98,95 @@ struct FocusView: View {
     }
 
     private var blockingPanel: some View {
-        Panel(footnote: "Opening a blocked app shows a block screen. Answer \(ScreenTimeManager.questionsToUnlock) questions here to unlock everything for \(ScreenTimeManager.unlockMinutes) minutes.") {
+        Panel(footnote: "Blocks apps until you turn this off. Scheduled windows below block on their own, whether or not this is on.") {
             PanelRow(first: true) {
                 CrashToggle(label: "Block apps", isOn: blockingBinding)
+            }
+        }
+    }
+
+    /// Windows that block on their own. Rows can be switched off or deleted, not edited —
+    /// a window is two times and a few days, which is quicker to re-add than to amend.
+    private var schedulePanel: some View {
+        Panel(title: "Scheduled focus",
+              footnote: "Apps block themselves for these windows even if Crash Cards is closed. Unlocking during one still works — it just lasts \(manager.unlockMinutes) minutes, and then the window takes over again.") {
+            if manager.schedules.isEmpty {
+                PanelRow(first: true) {
+                    Text("No windows yet. Set one for the hours you mean to study.")
+                        .font(.reading(15))
+                        .foregroundStyle(Brand.inkFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                ForEach(Array(manager.schedules.enumerated()), id: \.element.id) { index, schedule in
+                    PanelRow(first: index == 0) {
+                        scheduleRow(schedule)
+                    }
+                }
+            }
+            PanelRow(first: false) {
+                PanelAction(title: "Add a window") {
+                    editing = FocusSchedule(start: 9 * 60, end: 11 * 60,
+                                            days: FocusSchedule.weekdays)
+                }
+            }
+        }
+    }
+
+    private func scheduleRow(_ schedule: FocusSchedule) -> some View {
+        let running = schedule.isActive(at: Date())
+        return HStack(spacing: 12) {
+            PixelIcon(glyph: .clock, size: 18,
+                      color: running ? Brand.gold : (schedule.enabled ? Brand.inkDim : Brand.inkFaint))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(schedule.timeText)
+                    .font(.brandLabel)
+                    .foregroundStyle(schedule.enabled ? Brand.ink : Brand.inkFaint)
+                    .monospacedDigit()
+                Text(running ? "Blocking now" : schedule.daysText)
+                    .font(.reading(12))
+                    .foregroundStyle(running ? Brand.gold : Brand.inkFaint)
+            }
+
+            Spacer(minLength: 0)
+
+            CrashToggle(label: "", isOn: Binding(
+                get: { schedule.enabled },
+                set: { manager.setSchedule(schedule, enabled: $0) }))
+                .fixedSize()
+                .accessibilityLabel("\(schedule.timeText), \(schedule.daysText)")
+
+            Button {
+                Haptics.tap()
+                manager.removeSchedule(schedule)
+            } label: {
+                PixelIcon(glyph: .close, size: 14, color: Brand.mult)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressable)
+            .accessibilityLabel("Remove \(schedule.timeText)")
+        }
+    }
+
+    /// What it costs to get past the shield. Both numbers reach the block screen too.
+    private var unlockPanel: some View {
+        Panel(title: "Unlock rules",
+              footnote: "Answer this many questions correctly and every blocked app opens for this long. Wrong answers don't count against you — the gate just keeps asking.") {
+            PanelRow(first: true) {
+                CrashStepper(label: "Questions",
+                             value: Binding(get: { manager.questionsToUnlock },
+                                            set: { manager.questionsToUnlock = $0 }),
+                             range: ScreenTimeManager.questionRange)
+            }
+            PanelRow {
+                CrashStepper(label: "Unlocks for",
+                             value: Binding(get: { manager.unlockMinutes },
+                                            set: { manager.unlockMinutes = $0 }),
+                             range: ScreenTimeManager.minuteRange,
+                             step: ScreenTimeManager.minuteStep,
+                             format: { "\($0) min" })
             }
         }
     }
@@ -179,18 +273,39 @@ struct FocusView: View {
     /// Blocked shows the joker, not a padlock: the point isn't that something is locked,
     /// it's *what* is locked. The same card is on the block screen and the app icon.
     private var statusGlyph: PixelGlyph {
-        manager.isShieldActive ? .joker : .lockOpen
+        if manager.isShieldActive { return .joker }
+        if !manager.isBlocking, manager.nextScheduled != nil { return .clock }
+        return .lockOpen
     }
     private var statusColor: Color {
         if manager.isShieldActive { return Brand.gold }
-        return manager.isBlocking ? Brand.green : Brand.inkFaint
+        if manager.isBlocking { return Brand.green }
+        return manager.nextScheduled != nil ? Brand.inkDim : Brand.inkFaint
     }
+
+    /// Why the shield is up matters: a scheduled window says so, because the way to end one
+    /// is to edit the window, not to look for a switch that isn't on.
     private var statusTitle: String {
-        if manager.isShieldActive { return "Apps blocked" }
-        return manager.isBlocking ? "Unlocked" : "Focus off"
+        if manager.isShieldActive {
+            return manager.activeSchedule != nil ? "Focus window" : "Apps blocked"
+        }
+        if manager.isUnlockedNow { return "Unlocked" }
+        return manager.nextScheduled != nil ? "Focus scheduled" : "Focus off"
     }
     private var statusDetail: String {
-        manager.isBlocking ? "" : "Turn on blocking to put your apps behind a few questions."
+        if manager.isShieldActive || manager.isBlocking { return "" }
+        if let next = manager.nextScheduled { return "Next window \(nextText(next))" }
+        return "Turn on blocking, or schedule the hours you mean to study."
+    }
+
+    /// "today at 9:00 AM" / "Mon at 9:00 AM" — enough to tell a schedule was set right.
+    private func nextText(_ next: (schedule: FocusSchedule, date: Date)) -> String {
+        let calendar = Calendar.current
+        let time = FocusSchedule.timeText(next.schedule.start)
+        if calendar.isDateInToday(next.date) { return "today at \(time)" }
+        if calendar.isDateInTomorrow(next.date) { return "tomorrow at \(time)" }
+        let weekday = calendar.component(.weekday, from: next.date)
+        return "\(FocusSchedule.dayAbbreviation(weekday)) at \(time)"
     }
 
     /// Turning blocking on walks the whole setup: permission, then apps, then shield.

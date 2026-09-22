@@ -60,7 +60,13 @@ final class ScreenTimeManager {
     /// True while apps are shielded — by the switch or by a schedule, and not unlocked.
     /// The same rule as `BlockingShared.shouldShield`, over the loaded schedules.
     var isShieldActive: Bool {
-        !BlockingShared.isUnlocked && (isBlocking || activeSchedule != nil)
+        hasSelection && !BlockingShared.isUnlocked && (isBlocking || activeSchedule != nil)
+    }
+
+    /// Switched on, or inside a window, but nothing picked to block — so nothing is. The
+    /// screen says this out loud rather than claiming a shield that isn't there.
+    var needsApps: Bool {
+        !hasSelection && (isBlocking || activeSchedule != nil)
     }
 
     /// The schedule doing the blocking right now, if that's why the shield is up.

@@ -111,14 +111,33 @@ enum BlockingShared {
 
     // MARK: - The shield
 
+    /// Is there anything to shield? A switch turned on over an empty picker blocks nothing,
+    /// so this is part of the answer rather than a detail of how the shield is applied.
+    static var hasSelection: Bool {
+        let selection = selection
+        return !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
+    }
+
     /// Should apps be shielded at this instant?
     ///
     /// Derived rather than stored, so nothing has to stay in sync: the manual switch, any
     /// schedule and a running unlock are read fresh every time. A missed DeviceActivity
     /// callback therefore can't strand the shield — the next call puts it right.
     static var shouldShield: Bool {
-        guard !isUnlocked else { return false }
-        return isBlocking || activeSchedule() != nil
+        shouldShield(hasSelection: hasSelection,
+                     isBlocking: isBlocking,
+                     isUnlocked: isUnlocked,
+                     hasActiveSchedule: activeSchedule() != nil)
+    }
+
+    /// The rule itself, over values instead of storage, so it can be checked without an
+    /// App Group to write to.
+    static func shouldShield(hasSelection: Bool,
+                             isBlocking: Bool,
+                             isUnlocked: Bool,
+                             hasActiveSchedule: Bool) -> Bool {
+        guard hasSelection, !isUnlocked else { return false }
+        return isBlocking || hasActiveSchedule
     }
 
     /// Single source of truth for the shield.

@@ -166,10 +166,19 @@ targets:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
-            NSExtensionActivationRule:
-              NSExtensionActivationSupportsText: true
-              NSExtensionActivationSupportsWebURLWithMaxCount: 1
-              NSExtensionActivationSupportsFileWithMaxCount: 1
+            # The "SupportsFile" form matches any file at all, which put Crash Cards in the
+            # share sheet for photos, PDFs and zips — none of which it can read. A predicate
+            # narrows it to what the parsers actually accept: text, a link, or a text file
+            # (.md, .csv and .tsv all conform to public.plain-text).
+            NSExtensionActivationRule: |
+              SUBQUERY (
+                  extensionItems, $item,
+                  SUBQUERY (
+                      $item.attachments, $attachment,
+                      ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text"
+                      || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+                  ).@count >= 1
+              ).@count == 1
     entitlements:
       path: ShareExtension/ShareExtension.entitlements
       properties:

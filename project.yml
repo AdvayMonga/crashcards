@@ -81,6 +81,7 @@ targets:
     sources:
       - path: ShieldConfig
       - path: crashcards/BlockingShared.swift
+      - path: crashcards/FocusSchedule.swift
     info:
       path: ShieldConfig/Info.plist
       properties:
@@ -105,6 +106,7 @@ targets:
     sources:
       - path: DeviceActivityMonitorExt
       - path: crashcards/BlockingShared.swift
+      - path: crashcards/FocusSchedule.swift
     info:
       path: DeviceActivityMonitorExt/Info.plist
       properties:

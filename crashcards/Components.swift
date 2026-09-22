@@ -393,6 +393,54 @@ struct CrashToggle: View {
     }
 }
 
+/// A number you nudge between two ends. Replaces `Stepper`.
+///
+/// The two keys are slabs you press like any other control, and the number between them is
+/// in the display face — it's the thing being changed, so it's the thing you read.
+struct CrashStepper: View {
+    let label: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    var step = 1
+    /// Rendered value, so "10" can read as "10 min" without the binding carrying a string.
+    var format: (Int) -> String = { "\($0)" }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.brandLabel)
+                .foregroundStyle(Brand.ink)
+            Spacer(minLength: 8)
+
+            key(.minus, by: -step, enabled: value > range.lowerBound)
+
+            Text(format(value))
+                .font(.brandNumber)
+                .foregroundStyle(Brand.gold)
+                .monospacedDigit()
+                .frame(minWidth: 62)
+                .contentTransition(.numericText())
+
+            key(.plus, by: step, enabled: value < range.upperBound)
+        }
+    }
+
+    private func key(_ glyph: PixelGlyph, by delta: Int, enabled: Bool) -> some View {
+        Button {
+            Haptics.tap()
+            value = min(range.upperBound, max(range.lowerBound, value + delta))
+        } label: {
+            PixelIcon(glyph: glyph, size: 14, color: enabled ? Brand.outline : Brand.inkFaint)
+                .frame(width: 38, height: 34)
+                .slab(enabled ? Brand.gold : Brand.surfaceLedge, radius: 9, lift: 3,
+                      highlight: enabled ? 0.22 : 0.04)
+        }
+        .buttonStyle(.pressable)
+        .disabled(!enabled)
+        .accessibilityLabel(delta > 0 ? "Increase \(label)" : "Decrease \(label)")
+    }
+}
+
 /// A grid of slabs where exactly one is lit. Replaces `Picker`.
 ///
 /// It wraps rather than squeezing: the import screen offers seven formats, and seven labels

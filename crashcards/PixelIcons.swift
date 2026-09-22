@@ -36,6 +36,29 @@ extension PixelGlyph {
         "...###...",
         ".........")
 
+    static let minus = PixelGlyph(
+        ".........",
+        ".........",
+        ".........",
+        ".#######.",
+        ".#######.",
+        ".#######.",
+        ".........",
+        ".........",
+        ".........")
+
+    /// A clock face with its hands at a quarter past — the sign for a scheduled window.
+    static let clock = PixelGlyph(
+        "..#####..",
+        ".#.....#.",
+        "#...#...#",
+        "#...#...#",
+        "#...####.",
+        "#.......#",
+        "#.......#",
+        ".#.....#.",
+        "..#####..")
+
     static let check = PixelGlyph(
         ".........",
         ".......##",

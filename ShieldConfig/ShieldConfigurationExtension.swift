@@ -15,7 +15,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             backgroundColor: Table.deep.withAlphaComponent(0.94),
             icon: blockedCards,
             title: .init(text: "The joker's locked", color: Table.ink),
-            subtitle: .init(text: "Open Crash Cards and answer \(questionCount) questions to unlock this app for \(unlockMinutes) minutes.",
+            subtitle: .init(text: "Open Crash Cards and answer \(questionCount) \(questionCount == 1 ? "question" : "questions") to unlock this app for \(unlockMinutes) minutes.",
                             color: Table.inkDim),
             primaryButtonLabel: .init(text: "OK", color: Table.outline),
             primaryButtonBackgroundColor: Table.gold
@@ -36,9 +36,10 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         static let inkDim = UIColor(red: 0x9D / 255, green: 0xAE / 255, blue: 0xBB / 255, alpha: 1)
     }
 
-    // Kept in sync with ScreenTimeManager; extensions can't import the app target.
-    private var questionCount: Int { 3 }
-    private var unlockMinutes: Int { 10 }
+    // The app's own settings, read from the App Group — an extension can't import the
+    // app target, but it shares its defaults.
+    private var questionCount: Int { BlockingShared.questionsToUnlock }
+    private var unlockMinutes: Int { BlockingShared.unlockMinutes }
 
     override func configuration(shielding application: Application) -> ShieldConfiguration { shield }
     override func configuration(shielding application: Application,

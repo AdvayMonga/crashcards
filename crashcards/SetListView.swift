@@ -243,8 +243,11 @@ struct SetListView: View {
     private func cardSummary(for set: FlashcardSet) -> String {
         let total = set.cards.count == 1 ? "1 card" : "\(set.cards.count) cards"
         let questions = set.multipleChoiceCount
-        guard questions > 0 else { return "\(total) · no questions" }
-        return "\(total) · \(questions) question\(questions == 1 ? "" : "s")"
+        // Every set can be quizzed now, so this says what answering feels like rather than
+        // whether quiz mode will open at all.
+        guard questions > 0 else { return "\(total) · typed" }
+        if questions == set.cards.count { return "\(total) · multiple choice" }
+        return "\(total) · \(questions) multiple choice"
     }
 
     @ViewBuilder private var studyBar: some View {

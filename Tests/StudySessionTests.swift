@@ -94,6 +94,35 @@ import Testing
         #expect(run?.correct == 1)
     }
 
+    @Test func carriesTheScoreAndStreakIntoWhatItRecords() {
+        let session = StudySession(cards: deck(3))
+        session.record(true, elapsed: 30)
+        session.next()
+        session.record(true, elapsed: 30)
+        session.next()
+        session.record(false, elapsed: 30)
+        session.next()
+
+        let run = session.consumeRun()
+        #expect(run?.score == 30)        // 10 at x1, 20 at x2, nothing for the miss
+        #expect(run?.bestStreak == 2)
+    }
+
+    @Test func startingOverWipesTheScore() {
+        let session = StudySession(cards: deck(2))
+        session.record(true, elapsed: 30)
+        session.restart()
+
+        #expect(session.score.total == 0)
+        #expect(session.score.streak == 0)
+    }
+
+    @Test func aRunKeepsTheOpeningMultItWasStartedWith() {
+        let session = StudySession(cards: deck(2), dayStreak: 7)
+        session.restart()
+        #expect(session.score.baseMult == 2)
+    }
+
     @Test func startingOverMakesAFreshRunToRecord() {
         let session = StudySession(cards: deck(2))
         session.record(true)

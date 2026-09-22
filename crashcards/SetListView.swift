@@ -7,6 +7,7 @@ import SwiftUI
 struct SetListView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(FlagStore.self) private var flags
+    @Environment(StatsStore.self) private var stats
     @State private var selected: Set<String> = Prefs.selectedSetIDs
     @State private var studyMode: StudyMode?
     @State private var importingFolder = false
@@ -77,7 +78,10 @@ struct SetListView: View {
             case .flashcards:
                 CardDeckView(cards: cards) { studyMode = nil }
             case .quiz:
-                QuizView(session: StudySession(cards: cards)) { studyMode = nil }
+                // The days you've already put in set the mult this run opens on.
+                QuizView(session: StudySession(cards: cards, dayStreak: stats.dayStreak)) {
+                    studyMode = nil
+                }
             }
         }
     }

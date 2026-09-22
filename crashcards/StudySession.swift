@@ -13,8 +13,15 @@ final class StudySession {
     /// Whether this run's activity has already gone to the stats store.
     private var recorded = false
 
-    init(cards: [Card]) {
+    /// How many days in a row you've studied, held so starting over — or practising the
+    /// ones you missed — opens on the same mult this run did.
+    let dayStreak: Int
+    private(set) var score: ScoreRun
+
+    init(cards: [Card], dayStreak: Int = 0) {
         self.cards = cards
+        self.dayStreak = dayStreak
+        score = ScoreRun(dayStreak: dayStreak)
         order = Array(cards.indices).shuffled()
     }
 
@@ -31,10 +38,14 @@ final class StudySession {
     /// Cards not answered correctly this session (wrong or skipped), in study order.
     var missedCards: [Card] { order.filter { results[$0] != true }.map { cards[$0] } }
 
-    /// Record whether the current card was answered correctly.
-    func record(_ correct: Bool) {
+    /// Record whether the current card was answered correctly, and what it scored.
+    ///
+    /// `elapsed` defaults to never — a caller that isn't timing the question simply doesn't
+    /// earn the speed chips.
+    func record(_ correct: Bool, elapsed: TimeInterval = .infinity) {
         guard position < order.count else { return }
         results[order[position]] = correct
+        score.record(correct: correct, elapsed: elapsed)
     }
 
     func next() {
@@ -48,6 +59,7 @@ final class StudySession {
         results.removeAll()
         startedAt = Date()
         recorded = false
+        score = ScoreRun(dayStreak: dayStreak)
     }
 
     /// This run's activity, handed over once — a second call returns nil, so finishing and
@@ -61,6 +73,8 @@ final class StudySession {
         return StudyRun(answered: answeredCount,
                         correct: correctCount,
                         seconds: StatsStore.studySeconds(since: startedAt, answered: answeredCount),
+                        bestStreak: score.bestStreak,
+                        score: score.total,
                         isComplete: isFinished)
     }
 }

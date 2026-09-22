@@ -3,8 +3,8 @@ import SwiftUI
 /// Build one recurring focus window: when it opens, when it closes, and on which days.
 ///
 /// Times are set with steppers rather than a wheel picker — the system picker is the one
-/// control that can't be dressed, and hours plus five-minute steps is all a study block ever
-/// needs. The window you're describing is spelled out at the top as you change it.
+/// control that can't be dressed — and in half hours, which is as fine as a study block is
+/// ever set. The window you're describing is spelled out at the top as you change it.
 struct ScheduleEditorView: View {
     /// The window being edited, or a fresh one. Seeded by the caller.
     @State var schedule: FocusSchedule
@@ -23,6 +23,7 @@ struct ScheduleEditorView: View {
                 timesPanel
                 daysPanel
             }
+            .onAppear(perform: snapToStep)
         }
     }
 
@@ -34,8 +35,8 @@ struct ScheduleEditorView: View {
 
     /// The whole window in one line, so the steppers below never have to be read as numbers.
     private var summary: some View {
-        VStack(spacing: 8) {
-            PixelIcon(glyph: .clock, size: 30, color: Brand.gold)
+        VStack(spacing: 6) {
+            PixelIcon(glyph: .clock, size: 22, color: Brand.gold)
             Text(schedule.timeText)
                 .font(.brandTitle)
                 .foregroundStyle(Brand.ink)
@@ -46,7 +47,7 @@ struct ScheduleEditorView: View {
                 .foregroundStyle(schedule.days.isEmpty ? Brand.mult : Brand.inkDim)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        .padding(.vertical, 14)
         .slab(Brand.surfaceHigh, radius: Brand.cardRadius)
         .padding(.bottom, Brand.ledge)
     }
@@ -57,20 +58,14 @@ struct ScheduleEditorView: View {
                 ? "A window has to run for at least \(FocusSchedule.minimumMinutes) minutes — that's iOS's limit, not ours."
                 : "Apps are blocked for this window every week, whether or not the app is open.") {
             PanelRow(first: true) {
-                CrashStepper(label: "Starts", value: hour(\.start), range: 0...23,
-                             format: { FocusSchedule.timeText($0 * 60) })
+                CrashStepper(label: "Starts", value: time(\.start),
+                             range: 0...(endOfDay - step), step: step,
+                             format: FocusSchedule.timeText)
             }
             PanelRow {
-                CrashStepper(label: "Start minute", value: minute(\.start), range: 0...55,
-                             step: 5, format: { String(format: ":%02d", $0) })
-            }
-            PanelRow {
-                CrashStepper(label: "Ends", value: hour(\.end), range: 0...24,
-                             format: { FocusSchedule.timeText($0 * 60) })
-            }
-            PanelRow {
-                CrashStepper(label: "End minute", value: minute(\.end), range: 0...55,
-                             step: 5, format: { String(format: ":%02d", $0) })
+                CrashStepper(label: "Ends", value: time(\.end),
+                             range: step...endOfDay, step: step,
+                             format: FocusSchedule.timeText)
             }
         }
     }
@@ -143,22 +138,25 @@ struct ScheduleEditorView: View {
         return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
     }
 
-    // MARK: - Splitting a minute-of-day into two steppers
+    // MARK: - Time
 
-    private func hour(_ key: WritableKeyPath<FocusSchedule, Int>) -> Binding<Int> {
-        Binding(
-            get: { schedule[keyPath: key] / 60 },
-            set: { set(key, to: $0 * 60 + schedule[keyPath: key] % 60) })
-    }
-
-    private func minute(_ key: WritableKeyPath<FocusSchedule, Int>) -> Binding<Int> {
-        Binding(
-            get: { schedule[keyPath: key] % 60 },
-            set: { set(key, to: (schedule[keyPath: key] / 60) * 60 + $0) })
-    }
+    /// Half-hour steps. A study block is never set to the minute, and four steppers to say
+    /// "9:00 to 11:00" was three more numbers than the window needed.
+    private static let step = 30
+    private var step: Int { Self.step }
+    private var endOfDay: Int { 24 * 60 }
 
     /// Midnight is the last minute a window may end on, so 24:30 clamps back to 24:00.
-    private func set(_ key: WritableKeyPath<FocusSchedule, Int>, to value: Int) {
-        schedule[keyPath: key] = min(value, 24 * 60)
+    private func time(_ key: WritableKeyPath<FocusSchedule, Int>) -> Binding<Int> {
+        Binding(
+            get: { schedule[keyPath: key] },
+            set: { schedule[keyPath: key] = min(max(0, $0), endOfDay) })
+    }
+
+    /// A window saved before the steppers moved to half hours would otherwise step off the
+    /// grid forever — 9:05 to 9:35 to 10:05.
+    private func snapToStep() {
+        schedule.start = (schedule.start / step) * step
+        schedule.end = min(endOfDay, Int((Double(schedule.end) / Double(step)).rounded()) * step)
     }
 }

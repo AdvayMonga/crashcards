@@ -420,10 +420,12 @@ struct CrashStepper: View {
             key(.minus, by: -step, enabled: value > range.lowerBound)
 
             Text(format(value))
-                .font(.brandNumber)
+                .font(.number(20))
                 .foregroundStyle(Brand.gold)
                 .monospacedDigit()
-                .frame(minWidth: 62)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(minWidth: 78)
                 .contentTransition(.numericText())
 
             key(.plus, by: step, enabled: value < range.upperBound)

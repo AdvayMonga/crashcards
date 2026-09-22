@@ -161,9 +161,9 @@ struct FocusView: View {
                 Haptics.tap()
                 manager.removeSchedule(schedule)
             } label: {
-                PixelIcon(glyph: .close, size: 14, color: Brand.mult)
-                    .frame(width: 32, height: 32)
-                    .contentShape(Rectangle())
+                PixelIcon(glyph: .close, size: 12, color: Brand.outline)
+                    .frame(width: 34, height: 30)
+                    .slab(Brand.mult, radius: 9, lift: 3, highlight: 0.22)
             }
             .buttonStyle(.pressable)
             .accessibilityLabel("Remove \(schedule.timeText)")

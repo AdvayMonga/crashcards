@@ -16,10 +16,15 @@ enum AnswerMatcher {
         return accepted.contains { normalise($0) == attempt }
     }
 
-    /// Lowercased, stripped of punctuation and outer whitespace, inner runs collapsed, and
-    /// with a leading article dropped.
+    /// Lowercased, accents dropped, stripped of punctuation and outer whitespace, inner
+    /// runs collapsed, and with a leading article dropped.
+    ///
+    /// Accents go because the quiz's own keyboard has no way to type them: "cafe" has to
+    /// count for "café" or a language deck can't be answered at all.
     static func normalise(_ text: String) -> String {
-        let cleaned = text.lowercased().unicodeScalars
+        let cleaned = text
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+            .unicodeScalars
             .map { CharacterSet.punctuationCharacters.contains($0) ? " " : Character($0) }
         let words = String(cleaned).split(separator: " ").map(String.init)
         // "a towel" and "towel" are one answer; "a" alone is still an answer.

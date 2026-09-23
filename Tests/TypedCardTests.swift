@@ -114,4 +114,11 @@ struct AnswerMatcherTests {
     @Test func keepsASingleWordThatIsAlsoAnArticle() {
         #expect(AnswerMatcher.matches("A", anyOf: ["a"]))
     }
+
+    /// The quiz keyboard has no accents, so an unaccented spelling has to count.
+    @Test func forgivesMissingAccents() {
+        #expect(AnswerMatcher.matches("cafe", anyOf: ["café"]))
+        #expect(AnswerMatcher.matches("nino", anyOf: ["niño"]))
+        #expect(AnswerMatcher.matches("café", anyOf: ["cafe"]))
+    }
 }

@@ -49,11 +49,6 @@ struct QuizView: View {
             .shake(on: misses)
 
         }
-        // On the outer stack, not the question inside it: the keyboard shrinks the safe
-        // area of whatever owns it, and a child that ignores the inset is still laid out
-        // inside a parent that shrank. Applied here, nothing reflows when the keyboard
-        // arrives between one typed card and the next.
-        .ignoresSafeArea(.keyboard, edges: .bottom)
         .animation(Motion.deal, value: session.position)
         .animation(Motion.deal, value: session.isFinished)
         .animation(Motion.pop, value: gain)
@@ -110,8 +105,9 @@ struct QuizView: View {
                     .padding(.vertical, 34)
                 CardIndex(text: "?", tint: Brand.chips)
             }
+            // The one card that doesn't breathe: it's being read, and the keyboard under a
+            // typed card is right there for the wobble to show against.
             .fixedSize(horizontal: false, vertical: true)
-            .breathing(0.7, period: 3.3)
             .overlay(alignment: .bottom) {
                 if let gain {
                     GainBadge(gain: gain)
@@ -291,6 +287,7 @@ enum TypedVerdict: Equatable {
 
 /// The typed answer, wearing the same clothes as a tapped one.
 ///
+/// Typed on the quiz's own keyboard rather than the system one, so nothing above it moves.
 /// Judged, it becomes the rows a multiple-choice card would show: the answer in green
 /// with a tick, and what you typed in red beneath it when they differ. Same slab, same
 /// glyphs, same colours — the only difference is where the answer came from.
@@ -300,7 +297,6 @@ private struct TypedAnswer: View {
     @Binding var text: String
     let onSubmit: () -> Void
 
-    @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var blank: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -315,21 +311,59 @@ private struct TypedAnswer: View {
                     AnswerRow(text: text, tint: Brand.mult, glyph: .close)
                 }
             } else {
-                CrashField(placeholder: "Type your answer", text: $text)
-                    .focused($focused)
-                    .submitLabel(.done)
-                    .onSubmit { if !blank { onSubmit() } }
-
-                Button("Check") { onSubmit() }
-                    .buttonStyle(.solid(Brand.chips))
-                    .disabled(blank)
-                    .opacity(blank ? 0.45 : 1)
+                AnswerBox(text: text)
+                CrashKeyboard(text: $text, canSubmit: !blank, onSubmit: onSubmit)
             }
         }
-        // Fixed, so the question above doesn't slide when the field gives way to the
-        // verdict — two rows and a field-plus-button come to about the same height.
-        .frame(maxWidth: .infinity, minHeight: 124, alignment: .top)
-        .onAppear { focused = true }
+        // Held at the height of the box and keyboard, so the question above doesn't move
+        // when they give way to the verdict.
+        .frame(maxWidth: .infinity, minHeight: AnswerBox.height + 12 + CrashKeyboard.height,
+               alignment: .top)
+    }
+}
+
+/// Where the typed answer shows: a text box's clothes with no text field inside, so the
+/// system keyboard has nothing to attach to.
+private struct AnswerBox: View {
+    let text: String
+    static let height: CGFloat = 46
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var blink = false
+
+    var body: some View {
+        HStack(spacing: 2) {
+            if text.isEmpty {
+                Text("Type your answer")
+                    .font(.brandCaption)
+                    .foregroundStyle(Brand.inkFaint)
+            } else {
+                Text(text)
+                    .font(.reading(16))
+                    .foregroundStyle(Brand.ink)
+                    .lineLimit(1)
+                    .truncationMode(.head)   // the end you're typing at stays in view
+            }
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Brand.gold)
+                .frame(width: 2, height: 20)
+                .opacity(blink || reduceMotion ? 1 : 0.15)
+                .animation(reduceMotion ? nil
+                            : .easeInOut(duration: 0.5).repeatForever(autoreverses: true),
+                           value: blink)
+                .onAppear { blink = true }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: Self.height)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Brand.surfaceLedge)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Brand.outline, lineWidth: Brand.stroke)))
+        .accessibilityElement()
+        .accessibilityLabel(text.isEmpty ? "Answer, empty" : "Answer: \(text)")
     }
 }
 

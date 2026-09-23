@@ -345,6 +345,8 @@ struct PanelRow<Content: View>: View {
 /// of the row's, which is what made these rows twice as tall as the ones around them.
 struct PanelAction: View {
     let title: String
+    /// What the row currently reads as, shown dimmed on the right. Nil for a plain action.
+    var detail: String?
     var tint: Color = Brand.gold
     let action: () -> Void
 
@@ -353,9 +355,15 @@ struct PanelAction: View {
             Haptics.tap()
             action()
         } label: {
-            HStack(spacing: 0) {
+            HStack(spacing: 12) {
                 Text(title).font(.brandLabel).foregroundStyle(tint)
                 Spacer(minLength: 0)
+                if let detail {
+                    Text(detail)
+                        .font(.brandCaption)
+                        .foregroundStyle(Brand.inkDim)
+                        .lineLimit(1)
+                }
             }
             .contentShape(Rectangle())
         }

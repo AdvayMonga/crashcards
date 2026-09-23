@@ -10,6 +10,7 @@ struct FocusView: View {
     @State private var pendingSetup: Setup?
     @State private var gatedApps = GatedApps.all
     @State private var addingApp = false
+    @State private var choosingSets = false
     @State private var copied: String?
     @State private var editing: FocusSchedule?
 
@@ -47,12 +48,15 @@ struct FocusView: View {
             }
         }
         .screenLayer(isPresented: $unlocking) {
-            UnlockView(cards: library.quizCards, manager: manager) { unlocking = false }
+            UnlockView(cards: library.gateCards, manager: manager) { unlocking = false }
         }
         .screenLayer(item: $editing) { draft in
             ScheduleEditorView(schedule: draft,
                                onSave: { manager.addSchedule($0) },
                                onClose: { editing = nil })
+        }
+        .screenLayer(isPresented: $choosingSets) {
+            GateSetsView { choosingSets = false }
         }
         // Dismissing the picker without picking anything abandons what it was opened for —
         // otherwise the next trip through it would spring the earlier answer on you.
@@ -88,7 +92,7 @@ struct FocusView: View {
             if manager.isShieldActive {
                 // The gate's own rule, so the button can't offer a quiz it would then
                 // refuse to run — deleting your last set while blocked ends up here.
-                let canAnswer = !UnlockView.answerable(in: library.quizCards).isEmpty
+                let canAnswer = !UnlockView.answerable(in: library.gateCards).isEmpty
                 Button("Answer \(manager.questionsToUnlock) \(manager.questionsToUnlock == 1 ? "question" : "questions") to unlock") {
                     Haptics.thud()
                     unlocking = true
@@ -273,7 +277,20 @@ struct FocusView: View {
                     }
                 }
             }
+            PanelRow {
+                PanelAction(title: "Question sets", detail: gateSetsDetail) {
+                    choosingSets = true
+                }
+            }
         }
+    }
+
+    /// "Every set" until you narrow it, then how many of how many — the same shape as the
+    /// apps row above it.
+    private var gateSetsDetail: String {
+        let chosen = Prefs.gateSetIDs.intersection(Set(library.sets.map(\.id)))
+        guard !chosen.isEmpty else { return "Every set" }
+        return "\(chosen.count) of \(library.sets.count)"
     }
 
     private func copy(_ app: GatedApp) {

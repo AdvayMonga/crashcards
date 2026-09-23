@@ -47,7 +47,7 @@ struct RootView: View {
                 .safeAreaInset(edge: .bottom) { tabBar }
 
             if let request = prompt {
-                UnlockView(cards: library.quizCards, manager: blocking,
+                UnlockView(cards: library.gateCards, manager: blocking,
                            target: request.target, tapped: request.tapped) {
                     prompt = nil
                 }
@@ -140,7 +140,7 @@ struct RootView: View {
     /// you came through the shield's Answer button, the extension left a note of which one.
     private func offerUnlock() {
         guard prompt == nil, share == nil,
-              blocking.isShieldActive, !library.quizCards.isEmpty else { return }
+              blocking.isShieldActive, !library.gateCards.isEmpty else { return }
         tab = .focus
         prompt = GatePrompt(target: nil, tapped: BlockingShared.takePendingGate())
     }

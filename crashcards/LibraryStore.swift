@@ -16,10 +16,18 @@ final class LibraryStore {
 
     var hasFolders: Bool { FolderAccess.hasFolders }
 
-    /// Cards the unlock quiz draws from: your selected sets, or everything if none are selected.
-    var quizCards: [Card] {
-        let selected = sets.filter { Prefs.selectedSetIDs.contains($0.id) }
-        return (selected.isEmpty ? sets : selected).flatMap(\.cards)
+    /// Cards the unlock gate draws from. Its own choice, kept on the Focus tab, so studying
+    /// one set doesn't silently change what you're asked to get your apps back.
+    var gateCards: [Card] {
+        cards(in: Prefs.gateSetIDs)
+    }
+
+
+    /// An empty choice means everything — a selection nobody has made yet shouldn't read
+    /// as a selection of nothing.
+    private func cards(in ids: Set<String>) -> [Card] {
+        let picked = sets.filter { ids.contains($0.id) }
+        return (picked.isEmpty ? sets : picked).flatMap(\.cards)
     }
     var folders: [AttachedFolder] { FolderAccess.folders }
 

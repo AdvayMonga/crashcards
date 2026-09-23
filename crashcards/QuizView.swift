@@ -5,14 +5,12 @@ import UIKit
 /// you see the result for a beat and the next question arrives. No next button to hunt for.
 struct QuizView: View {
     @State var session: StudySession
-    @Environment(FlagStore.self) private var flags
     @Environment(StatsStore.self) private var stats
     let onClose: () -> Void
 
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var picked: Choice?
-    @State private var flagging = false
     /// Bumped on every wrong answer; the screen shakes once each time it changes.
     @State private var misses = 0
     /// When the question on screen was dealt, and whether you left the app while it stood.
@@ -27,6 +25,9 @@ struct QuizView: View {
     /// What's been typed on a typed card, and how it was judged once submitted.
     @State private var typed = ""
     @State private var typedVerdict: TypedVerdict?
+    /// Set when you gave up on a multiple-choice card: the answer lights up, nothing is
+    /// marked as your pick, and the card moves on by itself.
+    @State private var revealed = false
     /// The prompt waiting for you to say which chatbot should answer it.
     @State private var explaining: ExplainRequest?
 
@@ -47,14 +48,6 @@ struct QuizView: View {
             }
             .shake(on: misses)
 
-            if flagging {
-                CrashDialog(title: "Flag this card",
-                            message: session.current?.prompt,
-                            onCancel: { flagging = false }) {
-                    FlagOptions(card: session.current) { flagging = false }
-                }
-                .zIndex(1)
-            }
         }
         // On the outer stack, not the question inside it: the keyboard shrinks the safe
         // area of whatever owns it, and a child that ignores the inset is still laid out
@@ -63,7 +56,6 @@ struct QuizView: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .animation(Motion.deal, value: session.position)
         .animation(Motion.deal, value: session.isFinished)
-        .animation(Motion.pop, value: flagging)
         .animation(Motion.pop, value: gain)
         .safeAreaInset(edge: .top) { header }
         .screenLayer(item: $explaining) { request in
@@ -76,6 +68,7 @@ struct QuizView: View {
             // while one stands.
             typed = ""
             typedVerdict = nil
+            revealed = false
             shownAt = Date()
             wentAway = false
         }
@@ -134,7 +127,9 @@ struct QuizView: View {
             } else {
                 VStack(spacing: 12) {
                     ForEach(choices(for: card)) { choice in
-                        OptionRow(choice: choice, picked: picked) { answer(choice) }
+                        OptionRow(choice: choice, picked: picked, revealed: revealed) {
+                            answer(choice)
+                        }
                     }
                 }
             }
@@ -162,11 +157,9 @@ struct QuizView: View {
 
             ScoreReadout(score: session.score)
 
-            let flagged = flags.reason(for: session.current) != nil
-            HeaderChip(glyph: flagged ? .flagFilled : .flag,
-                       name: flagged ? "Flagged" : "Flag this card",
-                       tint: flagged ? Brand.gold : Brand.inkDim) { flagging = true }
-                .disabled(session.current == nil || flags.isLocked)
+            HeaderChip(glyph: .eye, name: "Reveal the answer",
+                       tint: canReveal ? Brand.inkDim : Brand.inkFaint) { reveal() }
+                .disabled(!canReveal)
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 8)
@@ -228,6 +221,36 @@ struct QuizView: View {
         }
     }
 
+    /// Give up on the question: show what the answer was, then move on like any other card.
+    ///
+    /// Scored as a miss. You didn't know it, so the streak breaks and it goes into the
+    /// review round — which is the whole reason for having one.
+    private var canReveal: Bool {
+        session.current != nil && picked == nil && typedVerdict == nil && !revealed
+    }
+
+    private func reveal() {
+        guard let card = session.current, canReveal else { return }
+        // Softer than a wrong answer, and no shake: you chose to see this, you didn't
+        // walk into it.
+        Haptics.knock()
+
+        if let accepted = card.typedAnswers {
+            typedVerdict = .wrong(accepted)
+        } else {
+            revealed = true
+        }
+        session.record(false, elapsed: .infinity)
+
+        advance?.cancel()
+        advance = Task { @MainActor in
+            // Longer than a tapped card: an answer you didn't know is there to be read.
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            session.next()
+        }
+    }
+
     private func review() {
         advance?.cancel()
         session = StudySession(cards: session.missedCards, dayStreak: session.dayStreak)
@@ -245,6 +268,7 @@ struct QuizView: View {
         gain = nil
         typed = ""
         typedVerdict = nil
+        revealed = false
         shownAt = Date()
         wentAway = false
     }
@@ -337,10 +361,13 @@ private struct AnswerRow: View {
 private struct OptionRow: View {
     let choice: Choice
     let picked: Choice?
+    /// The answer was given away rather than chosen: the right option lights up and no
+    /// option is marked as yours, because none was.
+    var revealed = false
     let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var judged: Bool { picked != nil }
+    private var judged: Bool { picked != nil || revealed }
     private var isPicked: Bool { picked == choice }
 
     private var tint: Color? {
@@ -378,6 +405,7 @@ private struct OptionRow: View {
         // The chosen answer jumps when it lands; the other correct one just lights up.
         .scaleEffect(isPicked && judged ? 1.05 : 1)
         .animation(Motion.pop(reduceMotion), value: picked)
+        .animation(Motion.pop(reduceMotion), value: revealed)
     }
 
     private var glyph: PixelGlyph? {

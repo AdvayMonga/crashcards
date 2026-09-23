@@ -203,6 +203,18 @@ extension PixelGlyph {
         "#....#...",
         "######...")
 
+    /// Reveal: show the answer you couldn't get to.
+    static let eye = PixelGlyph(
+        ".........",
+        "..#####..",
+        ".##...##.",
+        "#..###..#",
+        "#..###..#",
+        "#..###..#",
+        ".##...##.",
+        "..#####..",
+        ".........")
+
     static let question = PixelGlyph(
         ".........",
         "..#####..",

@@ -28,12 +28,19 @@ struct QuizView: View {
     /// Set when you gave up on a multiple-choice card: the answer lights up, nothing is
     /// marked as your pick, and the card moves on by itself.
     @State private var revealed = false
+    /// Held here rather than inside `TypedAnswer` so tapping the table can put the keyboard
+    /// away, and so a card that lands its verdict can let go of the field.
+    @FocusState private var typing: Bool
     /// The prompt waiting for you to say which chatbot should answer it.
     @State private var explaining: ExplainRequest?
 
     var body: some View {
         ZStack {
+            // Tapping anywhere that isn't a control puts the keyboard away. The background
+            // is the only thing under everything else, so this can't swallow an answer tap.
             TableBackground()
+                .contentShape(Rectangle())
+                .onTapGesture { typing = false }
 
             Group {
                 if session.isFinished {
@@ -90,8 +97,13 @@ struct QuizView: View {
     }
 
     private func question(_ card: Card) -> some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 0)
+        let accepted = card.typedAnswers
+        return VStack(spacing: 22) {
+            // A typed card holds the question at the top so the keyboard has nothing but
+            // empty table to cover. A tapped one has no keyboard to plan around, so it
+            // keeps floating in the middle with its answers low.
+            if accepted == nil { Spacer(minLength: 0) }
+
             CardFace(tint: Brand.chips) {
                 Text(card.prompt)
                     .font(.brandCard)
@@ -114,13 +126,16 @@ struct QuizView: View {
                 }
             }
 
-            Spacer(minLength: 0)
-
-            // Answers sit low, where your thumb already is.
-            if let accepted = card.typedAnswers {
-                TypedAnswer(accepted: accepted, verdict: typedVerdict,
-                            text: $typed, onSubmit: { submitTyped(accepted) })
+            if let accepted {
+                // Directly under the question rather than at the foot of the screen: that
+                // is the whole reason nothing jumps when the keyboard arrives.
+                TypedAnswer(accepted: accepted, verdict: typedVerdict, text: $typed,
+                            typing: $typing, onSubmit: { submitTyped(accepted) })
+                Spacer(minLength: 0)
             } else {
+                Spacer(minLength: 0)
+
+                // Tapped answers stay low, where your thumb already is.
                 VStack(spacing: 12) {
                     ForEach(choices(for: card)) { choice in
                         OptionRow(choice: choice, picked: picked, revealed: revealed) {
@@ -295,6 +310,7 @@ private struct TypedAnswer: View {
     let accepted: [String]
     let verdict: TypedVerdict?
     @Binding var text: String
+    @FocusState.Binding var typing: Bool
     let onSubmit: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -311,59 +327,27 @@ private struct TypedAnswer: View {
                     AnswerRow(text: text, tint: Brand.mult, glyph: .close)
                 }
             } else {
-                AnswerBox(text: text)
-                CrashKeyboard(text: $text, canSubmit: !blank, onSubmit: onSubmit)
+                CrashField(placeholder: "Type your answer", text: $text)
+                    // Pinned, not merely floored: with a spacer below rather than above,
+                    // the field would otherwise take every point going.
+                    .frame(height: 46)
+                    .focused($typing)
+                    .submitLabel(.done)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    // Return checks a written answer and simply puts the keyboard away on
+                    // an empty one, so the key is never a dead end.
+                    .onSubmit { if blank { typing = false } else { onSubmit() } }
+
+                Button("Check") { onSubmit() }
+                    .buttonStyle(.solid(Brand.chips))
+                    .disabled(blank)
             }
         }
-        // Held at the height of the box and keyboard, so the question above doesn't move
-        // when they give way to the verdict.
-        .frame(maxWidth: .infinity, minHeight: AnswerBox.height + 12 + CrashKeyboard.height,
-               alignment: .top)
-    }
-}
-
-/// Where the typed answer shows: a text box's clothes with no text field inside, so the
-/// system keyboard has nothing to attach to.
-private struct AnswerBox: View {
-    let text: String
-    static let height: CGFloat = 46
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var blink = false
-
-    var body: some View {
-        HStack(spacing: 2) {
-            if text.isEmpty {
-                Text("Type your answer")
-                    .font(.brandCaption)
-                    .foregroundStyle(Brand.inkFaint)
-            } else {
-                Text(text)
-                    .font(.reading(16))
-                    .foregroundStyle(Brand.ink)
-                    .lineLimit(1)
-                    .truncationMode(.head)   // the end you're typing at stays in view
-            }
-            RoundedRectangle(cornerRadius: 1)
-                .fill(Brand.gold)
-                .frame(width: 2, height: 20)
-                .opacity(blink || reduceMotion ? 1 : 0.15)
-                .animation(reduceMotion ? nil
-                            : .easeInOut(duration: 0.5).repeatForever(autoreverses: true),
-                           value: blink)
-                .onAppear { blink = true }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity, minHeight: Self.height)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Brand.surfaceLedge)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Brand.outline, lineWidth: Brand.stroke)))
-        .accessibilityElement()
-        .accessibilityLabel(text.isEmpty ? "Answer, empty" : "Answer: \(text)")
+        // Fixed, so the question above doesn't move when the field gives way to the
+        // verdict — two rows and a field-plus-button come to about the same height.
+        .frame(maxWidth: .infinity, minHeight: 124, maxHeight: 124, alignment: .top)
+        .onAppear { typing = true }
     }
 }
 

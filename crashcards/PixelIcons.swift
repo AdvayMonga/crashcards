@@ -25,18 +25,6 @@ extension PixelGlyph {
         ".#.....#.",
         ".........")
 
-    /// The delete key: an arrow pointing back over the letter it takes.
-    static let backspace = PixelGlyph(
-        ".........",
-        "...######",
-        "..#.....#",
-        ".#..#.#.#",
-        "#....#..#",
-        ".#..#.#.#",
-        "..#.....#",
-        "...######",
-        ".........")
-
     static let plus = PixelGlyph(
         ".........",
         "...###...",

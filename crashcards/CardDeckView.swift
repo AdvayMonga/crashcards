@@ -80,6 +80,7 @@ struct CardDeckView: View {
             }
         }
         .safeAreaInset(edge: .top) { header }
+        .safeAreaInset(edge: .bottom) { navigator }
         .screenLayer(item: $explaining) { request in
             AIPickerView(prompt: request.prompt) { explaining = nil }
         }
@@ -158,6 +159,53 @@ struct CardDeckView: View {
         position += 1
         held = .zero
     }
+
+    /// Bring the last card back.
+    ///
+    /// It slides in from the side rather than appearing, so going back reads as the reverse
+    /// of a throw. The card is placed off the table without animation first, then animated
+    /// home on the next turn of the run loop — set both in one tick and SwiftUI coalesces
+    /// them, so the card never renders off-table and there is nothing to animate from.
+    private func goBack() {
+        guard position > 0 else { return }
+        Haptics.knock()
+
+        guard !reduceMotion else {
+            position -= 1
+            held = .zero
+            return
+        }
+
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) {
+            position -= 1
+            held = CGSize(width: -560, height: -50)
+        }
+        Task { @MainActor in
+            withAnimation(.easeOut(duration: 0.28)) { held = .zero }
+        }
+    }
+
+    /// Back and forward, for going through a deck without throwing cards around — and the
+    /// only way back to a card already passed, which swiping alone can't do.
+    private var navigator: some View {
+        HStack(spacing: 14) {
+            HeaderChip(glyph: .chevronLeft, name: "Previous card",
+                       tint: canGoBack ? Brand.ink : Brand.inkFaint) { goBack() }
+                .disabled(!canGoBack)
+
+            HeaderChip(glyph: .chevron, name: "Next card",
+                       tint: canGoForward ? Brand.ink : Brand.inkFaint) { throwAway(toward: -1) }
+                .disabled(!canGoForward)
+        }
+        .padding(.bottom, 6)
+        .animation(Motion.pop, value: position)
+    }
+
+    private var canGoBack: Bool { position > 0 && !deck.isEmpty }
+    /// False on the end screen: there is no card there to throw.
+    private var canGoForward: Bool { position < deck.count }
 
     private func shuffle() {
         Haptics.thud()

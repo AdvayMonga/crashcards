@@ -433,6 +433,17 @@ private struct ScoreCard: View {
                         .font(.brandCaption)
                         .tracking(1.4)
                         .foregroundStyle(Brand.gold)
+
+                    // Its own line rather than a clause after POINTS, so it reads as the
+                    // event it is instead of a footnote on the total.
+                    if session.score.perfectBonus > 0 {
+                        Text("PERFECT RUN  +\(session.score.perfectBonus)")
+                            .font(.brandCaption)
+                            .tracking(1.4)
+                            .foregroundStyle(Brand.green)
+                            .padding(.top, 6)
+                            .transition(.scale(scale: 0.9).combined(with: .opacity))
+                    }
                 }
                 .padding(.top, 4)
             }

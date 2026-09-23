@@ -137,6 +137,4 @@ enum ModeUnavailable {
         }
     }
 
-    /// The format to write, shown only when that's the actual fix.
-    var expected: String? { nil }
 }

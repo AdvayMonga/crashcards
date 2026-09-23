@@ -16,7 +16,8 @@ enum DeckPrompt {
             with: trimmed.isEmpty ? "a topic I'll describe below" : trimmed)
     }
 
-    /// Kept under ~1600 characters so it still fits in a `?q=` link after escaping.
+    /// ~2.1k characters, which escapes to a ~3.2k `?q=` link — within what the providers
+    /// and iOS accept, but the reason to keep it tight rather than let it grow.
     private static let template = """
     Make me a flashcard deck on: TOPIC
 

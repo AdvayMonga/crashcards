@@ -247,6 +247,19 @@ extension PixelGlyph {
         "..##.....",
         ".........")
 
+    /// The chevron mirrored. A drawn glyph rather than a rotated one: rotating the icon
+    /// would take its chip's ledge with it and put the shadow on top.
+    static let chevronLeft = PixelGlyph(
+        ".........",
+        ".....##..",
+        "....##...",
+        "...##....",
+        "..##.....",
+        "...##....",
+        "....##...",
+        ".....##..",
+        ".........")
+
     /// The joker: the app's sign for something blocked. A grinning head under a cap,
     /// which at nine pixels square is as much face as there is room for.
     static let joker = PixelGlyph(

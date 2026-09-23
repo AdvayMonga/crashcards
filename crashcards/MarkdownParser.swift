@@ -13,6 +13,7 @@ struct ParseIssue: Identifiable, Hashable {
         case noCorrectOption
         case multipleCorrectOptions
         case malformedOption
+        case longOption
         case orphanOptions
         case blankLineBeforeOptions
         case unclosedFence
@@ -44,6 +45,8 @@ struct ParseIssue: Identifiable, Hashable {
             return "More than one option is marked `[x]` while others are `[ ]`, so the wrong ones can't be told apart. Mark only the right one, or mark them all `[x]` to make it a typed answer."
         case .malformedOption:
             return "This looks like an option but isn't written as `- [ ]` or `- [x]`."
+        case .longOption:
+            return "This option is longer than \(MarkdownParser.optionLimit) characters, so it won't fit on the answer button and will be cut short. Shorten it, or move the detail into the question."
         case .orphanOptions:
             return "These options have no question line above them."
         case .blankLineBeforeOptions:
@@ -63,7 +66,7 @@ struct ParseIssue: Identifiable, Hashable {
         case .emptyFront, .emptyBack:
             return "Front of card :: Back of card"
         case .tooFewOptions, .noCorrectOption, .multipleCorrectOptions,
-             .malformedOption, .orphanOptions, .blankLineBeforeOptions:
+             .malformedOption, .longOption, .orphanOptions, .blankLineBeforeOptions:
             return MarkdownParser.questionExample
         case .unclosedFence:
             return MarkdownParser.fenceExample
@@ -97,6 +100,11 @@ struct ParsedFile {
 /// YAML frontmatter, fenced code blocks, and other prose are ignored. Anything that looks
 /// like a card but doesn't parse becomes a `ParseIssue` rather than being dropped silently.
 enum MarkdownParser {
+    /// How long an option can be and still be read on the answer button: two lines at the
+    /// smallest scale the quiz will shrink text to. Measured against the widest phone the
+    /// app supports, then rounded down, so the limit holds on the narrowest one too.
+    static let optionLimit = 90
+
     /// A correct multiple-choice question, shown when one is malformed or missing.
     static let questionExample = """
     Which planet is closest to the Sun?
@@ -196,6 +204,11 @@ enum MarkdownParser {
                     guard looksLikeOption(raw) else { break }
                     if let choice = parseChoice(raw) {
                         choices.append(choice)
+                        // Reported, never rejected: the card still works, it just can't be
+                        // read in full on the button, and only the author can fix that.
+                        if choice.text.count > MarkdownParser.optionLimit {
+                            issues.append(ParseIssue(line: j + 1, kind: .longOption, excerpt: raw))
+                        }
                     } else {
                         // Keep scanning, so one bad option doesn't truncate the question.
                         issues.append(ParseIssue(line: j + 1, kind: .malformedOption, excerpt: raw))

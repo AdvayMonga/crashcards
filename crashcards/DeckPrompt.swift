@@ -54,7 +54,8 @@ enum DeckPrompt {
     - Test whether I understand the thing, not whether I've seen the word. Ask how it works, why it's that way, or what breaks if you change one part.
     - Every wrong option should be something a person who half-learned this would genuinely pick. Nothing absurd or obviously padded.
     - Keep the four options within a few words of each other in length. If the correct one is always the longest, I can pass the deck without knowing anything.
-    - Keep questions to one or two lines and options short.
+    - Keep every option under 90 characters. They are buttons, not paragraphs — anything longer gets cut off on screen. Put the detail in the question instead.
+    - Keep questions to one or two lines.
 
     Prefer multiple choice. Reach for the typed form only when the answer is short enough
     that I could type it exactly.

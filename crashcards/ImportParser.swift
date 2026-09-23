@@ -52,7 +52,8 @@ enum ImportParser {
     }
 
     /// Parse with an explicit layout, or the best guess when none is given.
-    static func parse(_ text: String, as layout: Layout? = nil, title: String) -> Result {
+    static func parse(_ raw: String, as layout: Layout? = nil, title: String) -> Result {
+        let text = unfenced(raw)
         let chosen = layout ?? detect(text)
         let contents: [CardContent]
         let lineCount: Int
@@ -70,6 +71,35 @@ enum ImportParser {
 
         let cards = contents.map { Card(content: $0, setID: title, setTitle: title) }
         return Result(layout: chosen, cards: cards, skipped: max(0, lineCount - contents.count))
+    }
+
+    /// The contents of the largest fenced code block, or the text unchanged when there is none.
+    ///
+    /// Chatbots put the deck in a code block because that is what gives you a copy button,
+    /// and the copy takes the ``` lines with it. `MarkdownParser` *skips* fenced blocks —
+    /// right for an Obsidian note full of code samples, fatal for a paste that is nothing
+    /// but the block — so the fence is unwrapped here, on the import path only.
+    static func unfenced(_ text: String) -> String {
+        var blocks: [String] = []
+        var open: (fence: String, body: [String])?
+
+        for line in text.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let marker = trimmed.hasPrefix("```") ? "```" : (trimmed.hasPrefix("~~~") ? "~~~" : nil)
+            if let current = open, marker == current.fence {
+                blocks.append(current.body.joined(separator: "\n"))
+                open = nil
+            } else if open == nil {
+                if let marker { open = (marker, []) }   // rest of the line is the language tag
+            } else {
+                open?.body.append(line)
+            }
+        }
+        // An unclosed fence still means the text below it was meant as the deck.
+        if let current = open { blocks.append(current.body.joined(separator: "\n")) }
+
+        let best = blocks.max { $0.count < $1.count } ?? ""
+        return best.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : best
     }
 
     /// The layout that yields the most cards; ties go to the earlier, more explicit one.
@@ -176,6 +206,12 @@ enum ImportParser {
                 out.append(question)
                 for choice in choices {
                     out.append("- [\(choice.isCorrect ? "x" : " ")] \(choice.text)")
+                }
+                out.append("")
+            case .typed(let question, let accepted):
+                out.append(question)
+                for answer in accepted {
+                    out.append("- [x] \(answer)")
                 }
                 out.append("")
             }

@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
-/// Bring cards in from anywhere: paste them, fetch a URL, or open a file.
+/// Bring cards in from anywhere: make them with a chatbot, paste them, fetch a URL, or
+/// open a file.
 ///
 /// Whatever the source, you see the parsed cards before anything is saved — a wrong guess
 /// about the format is then obvious, and the layout picker fixes it.
@@ -13,9 +15,13 @@ struct ImportSetView: View {
     let onSaved: () -> Void
 
     @Environment(LibraryStore.self) private var library
+    @Environment(\.openURL) private var openURL
 
     @State private var text = ""
     @State private var title = ""
+    @State private var topic = ""
+    /// Shows the prompt really did reach the clipboard — the button otherwise does nothing visible.
+    @State private var copiedPrompt = false
     @State private var layout: ImportParser.Layout?
     @State private var urlString = ""
     @State private var fetching = false
@@ -46,6 +52,9 @@ struct ImportSetView: View {
                              action: save),
                    onCancel: onClose) {
             VStack(spacing: 16) {
+                // Only worth offering while there is nothing to import yet; once cards are
+                // pasted, it is just a panel in the way of the preview.
+                if text.isEmpty { generatePanel }
                 sourcePanel
                 if let result {
                     previewPanel(result)
@@ -71,10 +80,62 @@ struct ImportSetView: View {
             reparse()
         }
         .onChange(of: text) { _, _ in layout = nil; reparse() }
+        // The clipboard now holds a prompt for the old topic, so stop claiming otherwise.
+        .onChange(of: topic) { _, _ in copiedPrompt = false }
         .onChange(of: layout) { _, _ in reparse() }
     }
 
     // MARK: - Panels
+
+    /// Hand the prompt to whatever chatbot you already pay for, then come back and paste.
+    ///
+    /// The prompt goes to the clipboard on every one of these buttons, not just "Copy" —
+    /// Gemini has no way to prefill a chat, and even the two that do may drop the
+    /// parameter, so the paste is the guarantee and the link is the shortcut.
+    private var generatePanel: some View {
+        Panel(title: "Make cards with AI",
+              footnote: "Opens a chat with the prompt ready. Send it your notes or a photo of them, then copy the answer back here.") {
+            PanelRow(first: true) {
+                CrashField(placeholder: "What do you want to learn?", text: $topic)
+            }
+            PanelRow {
+                HStack(spacing: 10) {
+                    ForEach(AIProvider.all) { provider in
+                        Button(provider.name) { open(provider) }
+                            .buttonStyle(CrashButton(kind: .soft, tint: Brand.chips, fullWidth: false))
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            PanelRow {
+                PanelAction(title: copiedPrompt ? "Prompt copied" : "Copy the prompt instead",
+                            tint: copiedPrompt ? Brand.green : Brand.gold) {
+                    copyPrompt()
+                }
+            }
+        }
+    }
+
+    private func copyPrompt() {
+        UIPasteboard.general.string = DeckPrompt.text(topic: topic)
+        withAnimation(Motion.pop) { copiedPrompt = true }
+    }
+
+    private func open(_ provider: AIProvider) {
+        Prefs.preferredProviderID = provider.id   // "Explain" follows what you reach for here
+        let prompt = DeckPrompt.text(topic: topic)
+        UIPasteboard.general.string = prompt
+        if let url = provider.url(prompt: prompt) { openURL(url) }
+    }
+
+    /// Reading the clipboard shows the system's paste banner once; a button makes that a
+    /// deliberate act rather than something the app does behind your back.
+    private func pasteFromClipboard() {
+        guard let clipboard = UIPasteboard.general.string,
+              !clipboard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        text = clipboard          // onChange(of: text) reparses
+        Haptics.tap()
+    }
 
     private var sourcePanel: some View {
         Panel(title: "Source",
@@ -85,6 +146,11 @@ struct ImportSetView: View {
             PanelRow {
                 CrashField(placeholder: "Paste your cards here", text: $text,
                            multiline: true, minHeight: 150, mono: true)
+            }
+            if text.isEmpty {
+                PanelRow {
+                    PanelAction(title: "Paste from clipboard") { pasteFromClipboard() }
+                }
             }
             PanelRow {
                 HStack(spacing: 10) {

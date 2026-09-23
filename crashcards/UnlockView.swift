@@ -380,11 +380,15 @@ struct UnlockView: View {
         switch card.content {
         case .multipleChoice(let prompt, let choices):
             return Question(cardID: card.id, prompt: prompt, choices: choices.shuffled())
-        case .flip(let front, let back):
-            let distractors = Set(cards.map(\.answer)).subtracting([back, ""])
+        // Typed cards are borrowed from the same way flip cards are. The gate stays a
+        // tapping screen on purpose: it stands between you and an app you already reached
+        // for, so it has to be answerable in a second, not typed into.
+        case .flip, .typed:
+            let answer = card.answer
+            let distractors = Set(cards.map(\.answer)).subtracting([answer, ""])
             let picked = distractors.shuffled().prefix(3).map { Choice(text: $0, isCorrect: false) }
-            return Question(cardID: card.id, prompt: front,
-                            choices: (picked + [Choice(text: back, isCorrect: true)]).shuffled())
+            return Question(cardID: card.id, prompt: card.prompt,
+                            choices: (picked + [Choice(text: answer, isCorrect: true)]).shuffled())
         }
     }
 }

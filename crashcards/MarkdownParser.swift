@@ -37,11 +37,11 @@ struct ParseIssue: Identifiable, Hashable {
         case .emptyBack:
             return "Nothing after `::` — a flip card needs both a front and a back."
         case .tooFewOptions:
-            return "A multiple-choice question needs at least two options."
+            return "A question needs at least one option under it."
         case .noCorrectOption:
             return "None of these options is marked correct, so the card was skipped."
         case .multipleCorrectOptions:
-            return "More than one option is marked `[x]`, so any of them counts as correct."
+            return "More than one option is marked `[x]` while others are `[ ]`, so the wrong ones can't be told apart. Mark only the right one, or mark them all `[x]` to make it a typed answer."
         case .malformedOption:
             return "This looks like an option but isn't written as `- [ ]` or `- [x]`."
         case .orphanOptions:
@@ -81,7 +81,7 @@ struct ParsedFile {
     let issues: [ParseIssue]
 }
 
-/// Parses a flashcard `.md` file into flip cards and multiple-choice cards.
+/// Parses a flashcard `.md` file into flip cards, multiple-choice cards and typed cards.
 ///
 /// Format:
 ///   # Deck Title            → names the set (first heading; falls back to filename)
@@ -89,6 +89,10 @@ struct ParsedFile {
 ///   Question?               → a multiple-choice card, when *immediately* followed by a
 ///   - [ ] wrong               checkbox list. `- [x]` marks the correct option.
 ///   - [x] correct
+///
+///   Question?               → a typed card, when every option is `[x]`: there is nothing
+///   - [x] answer              to rule out, so each one is a spelling that counts.
+///   - [x] variant
 ///
 /// YAML frontmatter, fenced code blocks, and other prose are ignored. Anything that looks
 /// like a card but doesn't parse becomes a `ParseIssue` rather than being dropped silently.
@@ -199,13 +203,20 @@ enum MarkdownParser {
                     j += 1
                 }
 
-                let correctCount = choices.filter(\.isCorrect).count
-                if choices.count < 2 {
+                // Options with nothing to rule out are answers to type, not options to pick
+                // from — so a riddle needs no invented distractors, and every `[x]` on it
+                // is another spelling that counts.
+                let correct = choices.filter(\.isCorrect)
+                if choices.isEmpty {
                     issues.append(ParseIssue(line: i + 1, kind: .tooFewOptions, excerpt: line))
-                } else if correctCount == 0 {
+                } else if correct.isEmpty {
                     issues.append(ParseIssue(line: i + 1, kind: .noCorrectOption, excerpt: line))
+                } else if correct.count == choices.count {
+                    contents.append(.typed(question: line, accepted: correct.map(\.text)))
                 } else {
-                    if correctCount > 1 {
+                    // Some options are ruled out and more than one is not: still a card, and
+                    // any marked option counts, but say so — the distinction is lost.
+                    if correct.count > 1 {
                         issues.append(ParseIssue(line: i + 1, kind: .multipleCorrectOptions, excerpt: line))
                     }
                     contents.append(.multipleChoice(question: line, choices: choices.shuffled()))

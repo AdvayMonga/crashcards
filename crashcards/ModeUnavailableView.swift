@@ -32,23 +32,6 @@ struct ModeUnavailableView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let expected = reason.expected {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        Text(expected)
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundStyle(Brand.ink)
-                            .textSelection(.enabled)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Brand.surfaceLedge)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .strokeBorder(Brand.outline, lineWidth: 2))
-                    }
-                }
 
                 Spacer()
                 Button("Back to sets") { onClose() }
@@ -77,7 +60,6 @@ struct ModeUnavailableView: View {
         switch reason {
         case .noSetsSelected: return .cards
         case .noCards:        return .folder
-        case .noQuestions:    return .question
         }
     }
 }

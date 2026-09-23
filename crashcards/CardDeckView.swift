@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Flashcards: a stack of cards on the table. Swipe the top one away for the next, tap to
 /// flip it over.
@@ -8,6 +9,7 @@ import SwiftUI
 struct CardDeckView: View {
     @Environment(FlagStore.self) private var flags
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     let onClose: () -> Void
 
     /// Shuffled once, on entry. The library re-scans on every foreground, so holding the
@@ -21,6 +23,8 @@ struct CardDeckView: View {
     @State private var flipped: Set<Card.ID> = []
     /// Where the finger has dragged the top card. Zero whenever nothing is being held.
     @State private var held: CGSize = .zero
+    /// The prompt waiting for you to say which chatbot should answer it.
+    @State private var explaining: ExplainRequest?
 
     /// A playing card's proportions, the margin it keeps from the screen edge, and how far
     /// each card behind the top one is offset — which is all you ever see of them.
@@ -76,6 +80,9 @@ struct CardDeckView: View {
             }
         }
         .safeAreaInset(edge: .top) { header }
+        .screenLayer(item: $explaining) { request in
+            AIPickerView(prompt: request.prompt) { explaining = nil }
+        }
         .animation(Motion.pop, value: flagging)
     }
 
@@ -160,6 +167,12 @@ struct CardDeckView: View {
         position = 0
     }
 
+    private func explainCurrent() {
+        guard let card = currentCard else { return }
+        Haptics.tap()
+        explaining = ExplainRequest(prompt: ExplainPrompt.text(for: [card]))
+    }
+
     private func toggleFlip(_ card: Card) {
         Haptics.knock()
         withAnimation(reduceMotion ? .easeInOut(duration: 0.22)
@@ -174,6 +187,13 @@ struct CardDeckView: View {
 
             ProgressTrack(value: min(position + 1, deck.count), total: deck.count,
                           label: "Card \(min(position + 1, deck.count)) of \(deck.count)")
+
+            // Only once the answer is showing: explaining a card you haven't attempted
+            // hands you the answer instead of teaching you anything.
+            let turned = currentCard.map { flipped.contains($0.id) } ?? false
+            HeaderChip(glyph: .question, name: "Explain with AI",
+                       tint: turned ? Brand.chips : Brand.inkFaint) { explainCurrent() }
+                .disabled(!turned)
 
             let flagged = flags.reason(for: currentCard) != nil
             HeaderChip(glyph: flagged ? .flagFilled : .flag,
@@ -228,6 +248,9 @@ private struct FlipCard: View {
                     .font(.brandCard)
                     .foregroundStyle(Brand.cardInk)
                     .multilineTextAlignment(.center)
+                    // The card is a fixed size, so past a point text has to give: it
+                    // shrinks first and truncates rather than spilling over the edge.
+                    .lineLimit(12)
                     .minimumScaleFactor(0.55)
                     .padding(.horizontal, 30)
                 Spacer(minLength: 0)

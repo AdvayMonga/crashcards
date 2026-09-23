@@ -26,11 +26,17 @@ struct Slab: ViewModifier {
                     }
                     .overlay(shape.strokeBorder(Brand.outline, lineWidth: Brand.stroke))
             }
-            .background(alignment: .bottom) {
-                // The ledge. Sized to the content and pushed down, so only its lip shows.
+            .background(alignment: .top) {
+                // The ledge: the same shape, grown downwards rather than pushed down.
+                //
+                // Pushing a copy down leaves its top edge and top corners sitting inside
+                // the face's corner curve, where they show through as a grey wedge in each
+                // corner and a line across anything translucent. Grown from the same top
+                // edge, the two shapes' corners coincide exactly and only the lip below
+                // the face is ever visible.
                 shape.fill(fill.opacity(0.001).blended(under: Brand.outline, amount: 0.55))
                     .overlay(shape.strokeBorder(Brand.outline, lineWidth: Brand.stroke))
-                    .offset(y: lift)
+                    .padding(.bottom, -lift)
                     .shadow(color: .black.opacity(0.35), radius: 6, y: 4)
             }
     }
@@ -438,10 +444,12 @@ struct CrashStepper: View {
             key(.minus, by: -step, enabled: value > range.lowerBound)
 
             Text(format(value))
-                .font(.brandNumber)
+                .font(.number(20))
                 .foregroundStyle(Brand.gold)
                 .monospacedDigit()
-                .frame(minWidth: 62)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(minWidth: 78)
                 .contentTransition(.numericText())
 
             key(.plus, by: step, enabled: value < range.upperBound)

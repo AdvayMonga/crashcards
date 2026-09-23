@@ -1,4 +1,5 @@
 import SwiftUI
+import FamilyControls
 
 /// Gate in front of blocked apps: answer questions until enough are right, then the shield
 /// lifts for the grace window.
@@ -13,6 +14,9 @@ struct UnlockView: View {
     let manager: ScreenTimeManager
     /// The app you were headed to, when the questions came from a gate link.
     var target: GatedApp?
+    /// The app you were headed to, when the questions came from the shield's Answer button.
+    /// iOS can't send you back to it from a token, so the joker face tells you where to go.
+    var tapped: PendingGate?
     let onClose: () -> Void
 
     @Environment(\.openURL) private var openURL
@@ -167,6 +171,10 @@ struct UnlockView: View {
                         .buttonStyle(.solid(Brand.green))
                     Button("Stay here") { onClose() }
                         .buttonStyle(.soft)
+                } else if let tapped {
+                    wayBack(to: tapped)
+                    Button("Done") { onClose() }
+                        .buttonStyle(.solid(Brand.green))
                 } else {
                     Button("Done") { onClose() }
                         .buttonStyle(.solid(Brand.green))
@@ -174,6 +182,26 @@ struct UnlockView: View {
             }
             .transition(.opacity)
         }
+    }
+
+    /// The token draws as the app's own icon and name, which is the one thing FamilyControls
+    /// will show of an app it otherwise keeps anonymous.
+    private func wayBack(to gate: PendingGate) -> some View {
+        HStack(spacing: 8) {
+            if let token = gate.token {
+                Label(token)
+                    .font(.reading(15))
+                    .foregroundStyle(Brand.ink)
+            } else {
+                Text(gate.name ?? "The app")
+                    .font(.reading(15))
+                    .foregroundStyle(Brand.ink)
+            }
+            Text("is open — switch back to it.")
+                .font(.reading(14))
+                .foregroundStyle(Brand.inkDim)
+        }
+        .multilineTextAlignment(.center)
     }
 
     private var header: some View {

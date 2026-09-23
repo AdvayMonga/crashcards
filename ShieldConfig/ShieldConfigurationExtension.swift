@@ -3,22 +3,24 @@ import ManagedSettingsUI
 import UIKit
 
 /// Customizes the system block screen. Only these fields are ours — the shield itself is
-/// system-rendered, so the questions live in the app, not here.
+/// system-rendered, so the questions live in the app, not here. The buttons are answered
+/// by `ShieldActionExtension`: Answer opens Crash Cards, Not now closes the blocked app.
 ///
 /// The joker is the app's sign for a blocked thing: the card you'd rather be playing, face
 /// up, with the suit locked in its corners. It's the same card the app icon carries and the
 /// same one the Focus tab shows while the shield is up.
 class ShieldConfigurationExtension: ShieldConfigurationDataSource {
-    private var shield: ShieldConfiguration {
+    private func shield(for name: String?) -> ShieldConfiguration {
         ShieldConfiguration(
             backgroundBlurStyle: .dark,
             backgroundColor: Table.deep.withAlphaComponent(0.94),
             icon: blockedCards,
             title: .init(text: "The joker's locked", color: Table.ink),
-            subtitle: .init(text: "Open Crash Cards and answer \(questionCount) \(questionCount == 1 ? "question" : "questions") to unlock this app for \(unlockMinutes) minutes.",
+            subtitle: .init(text: "Answer \(questionCount) \(questionCount == 1 ? "question" : "questions") in Crash Cards to open \(name ?? "this app") for \(unlockMinutes) minutes.",
                             color: Table.inkDim),
-            primaryButtonLabel: .init(text: "OK", color: Table.outline),
-            primaryButtonBackgroundColor: Table.gold
+            primaryButtonLabel: .init(text: "Answer", color: Table.outline),
+            primaryButtonBackgroundColor: Table.gold,
+            secondaryButtonLabel: .init(text: "Not now", color: Table.inkDim)
         )
     }
 
@@ -41,10 +43,14 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     private var questionCount: Int { BlockingShared.questionsToUnlock }
     private var unlockMinutes: Int { BlockingShared.unlockMinutes }
 
-    override func configuration(shielding application: Application) -> ShieldConfiguration { shield }
+    override func configuration(shielding application: Application) -> ShieldConfiguration {
+        shield(for: application.localizedDisplayName)
+    }
     override func configuration(shielding application: Application,
-                                in category: ActivityCategory) -> ShieldConfiguration { shield }
-    override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration { shield }
+                                in category: ActivityCategory) -> ShieldConfiguration {
+        shield(for: application.localizedDisplayName)
+    }
+    override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration { shield(for: nil) }
     override func configuration(shielding webDomain: WebDomain,
-                                in category: ActivityCategory) -> ShieldConfiguration { shield }
+                                in category: ActivityCategory) -> ShieldConfiguration { shield(for: nil) }
 }

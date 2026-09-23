@@ -286,10 +286,11 @@ struct FocusView: View {
         }
     }
 
-    /// Blocked shows the joker, not a padlock: the point isn't that something is locked,
-    /// it's *what* is locked. The same card is on the block screen and the app icon.
+    /// The padlock is the whole state in one glyph: open when your apps are yours, shut
+    /// when they aren't. A scheduled window that hasn't started yet shows the clock instead,
+    /// because the thing to know then is when, not whether.
     private var statusGlyph: PixelGlyph {
-        if manager.isShieldActive { return .joker }
+        if manager.isShieldActive { return .lockClosed }
         if !manager.isBlocking, manager.nextScheduled != nil { return .clock }
         return .lockOpen
     }

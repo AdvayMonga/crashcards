@@ -355,8 +355,12 @@ private struct OptionRow: View {
                 Text(choice.text)
                     .font(.brandBody)
                     .multilineTextAlignment(.leading)
-                    .lineLimit(4)
-                    .minimumScaleFactor(0.8)
+                    // Two lines, shrinking to fit rather than growing: four options at four
+                    // lines each pushed the question off the top of the screen. Anything
+                    // too long to fit at this scale is reported in File Problems instead of
+                    // being quietly cut, because the fix belongs in the deck.
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.55)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let glyph {
                     PixelIcon(glyph: glyph, size: 18, color: Brand.outline)

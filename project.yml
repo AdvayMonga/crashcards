@@ -11,8 +11,8 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
-    # Needed to run on a real device. The app and all three extensions need Family Controls
-    # and a shared app group, so Xcode has to register four App IDs against a real team —
+    # Needed to run on a real device. The app and all four extensions need Family Controls
+    # and a shared app group, so Xcode has to register five App IDs against a real team —
     # the simulator never asks, which is why this only bites the first time you go to device.
     DEVELOPMENT_TEAM: S8FH5MCHLY
     CODE_SIGN_STYLE: Automatic
@@ -55,6 +55,7 @@ targets:
             CFBundleURLSchemes: [crashcards, flashcards]
     dependencies:
       - target: ShieldConfig
+      - target: ShieldAction
       - target: DeviceActivityMonitorExt
       - target: ShareExtension
     entitlements:
@@ -99,6 +100,32 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.crashcards.ShieldConfig
 
+  # Answers the shield's buttons: hands you to the app for the questions, or closes the
+  # blocked app. Shares BlockingShared with the app.
+  ShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShieldAction
+      - path: crashcards/BlockingShared.swift
+      - path: crashcards/FocusSchedule.swift
+    info:
+      path: ShieldAction/Info.plist
+      properties:
+        CFBundleDisplayName: ShieldAction
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettings.shield-action-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldActionExtension
+    entitlements:
+      path: ShieldAction/ShieldAction.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.advaymonga.crashcards
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.advaymonga.crashcards.ShieldAction
+
   # Re-applies the shield when an unlock window expires, with the app closed.
   DeviceActivityMonitorExt:
     type: app-extension
@@ -139,10 +166,19 @@ targets:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
-            NSExtensionActivationRule:
-              NSExtensionActivationSupportsText: true
-              NSExtensionActivationSupportsWebURLWithMaxCount: 1
-              NSExtensionActivationSupportsFileWithMaxCount: 1
+            # The "SupportsFile" form matches any file at all, which put Crash Cards in the
+            # share sheet for photos, PDFs and zips — none of which it can read. A predicate
+            # narrows it to what the parsers actually accept: text, a link, or a text file
+            # (.md, .csv and .tsv all conform to public.plain-text).
+            NSExtensionActivationRule: |
+              SUBQUERY (
+                  extensionItems, $item,
+                  SUBQUERY (
+                      $item.attachments, $attachment,
+                      ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text"
+                      || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+                  ).@count >= 1
+              ).@count == 1
     entitlements:
       path: ShareExtension/ShareExtension.entitlements
       properties:

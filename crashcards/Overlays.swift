@@ -119,9 +119,7 @@ struct CrashModal<Body: View>: View {
 
             if let confirm {
                 Button(confirm.label) { confirm.action() }
-                    .buttonStyle(CrashButton(kind: .ghost,
-                                             tint: confirm.enabled ? Brand.gold : Brand.inkFaint,
-                                             fullWidth: false))
+                    .buttonStyle(CrashButton(kind: .ghost, tint: Brand.gold, fullWidth: false))
                     .disabled(!confirm.enabled)
             } else {
                 Color.clear.frame(width: 60, height: 1)

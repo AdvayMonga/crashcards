@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Crash Cards</string>
+	<string>ShieldAction</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -22,23 +22,10 @@
 	<string>1</string>
 	<key>NSExtension</key>
 	<dict>
-		<key>NSExtensionAttributes</key>
-		<dict>
-			<key>NSExtensionActivationRule</key>
-			<string>SUBQUERY (
-    extensionItems, $item,
-    SUBQUERY (
-        $item.attachments, $attachment,
-        ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text"
-        || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
-    ).@count &gt;= 1
-).@count == 1
-</string>
-		</dict>
 		<key>NSExtensionPointIdentifier</key>
-		<string>com.apple.share-services</string>
+		<string>com.apple.ManagedSettings.shield-action-service</string>
 		<key>NSExtensionPrincipalClass</key>
-		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+		<string>$(PRODUCT_MODULE_NAME).ShieldActionExtension</string>
 	</dict>
 </dict>
 </plist>

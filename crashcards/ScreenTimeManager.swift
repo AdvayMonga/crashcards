@@ -3,6 +3,7 @@ import FamilyControls
 import ManagedSettings
 import DeviceActivity
 import Observation
+import UserNotifications
 
 /// Blocks user-chosen apps via Screen Time (Family Controls). Opening a blocked app shows
 /// the system shield; answering questions in the app lifts it for a grace window.
@@ -59,7 +60,13 @@ final class ScreenTimeManager {
     /// True while apps are shielded — by the switch or by a schedule, and not unlocked.
     /// The same rule as `BlockingShared.shouldShield`, over the loaded schedules.
     var isShieldActive: Bool {
-        !BlockingShared.isUnlocked && (isBlocking || activeSchedule != nil)
+        hasSelection && !BlockingShared.isUnlocked && (isBlocking || activeSchedule != nil)
+    }
+
+    /// Switched on, or inside a window, but nothing picked to block — so nothing is. The
+    /// screen says this out loud rather than claiming a shield that isn't there.
+    var needsApps: Bool {
+        !hasSelection && (isBlocking || activeSchedule != nil)
     }
 
     /// The schedule doing the blocking right now, if that's why the shield is up.
@@ -93,7 +100,7 @@ final class ScreenTimeManager {
             isAuthorized = AuthorizationCenter.shared.authorizationStatus == .approved
             errorText = nil
             // Any window added before permission was granted could not be registered then.
-            if isAuthorized { registerSchedules() }
+            if isAuthorized { registerSchedules(); requestNotifications() }
         } catch {
             errorText = error.localizedDescription
             isAuthorized = false
@@ -106,6 +113,7 @@ final class ScreenTimeManager {
     }
 
     func startBlocking() {
+        requestNotifications()
         isBlocking = true
         unlockedUntil = nil
         BlockingShared.isBlocking = true
@@ -130,6 +138,12 @@ final class ScreenTimeManager {
         BlockingShared.unlockedUntil = until
         BlockingShared.applyShield()
         scheduleRelock(at: until)
+    }
+
+    /// Before iOS 26.5 the shield's Answer button reaches the app through a notification,
+    /// so the permission is asked for where blocking is turned on. Asked once; iOS remembers.
+    private func requestNotifications() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     // MARK: - Schedules

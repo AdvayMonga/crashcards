@@ -1,4 +1,5 @@
 import SwiftUI
+import FamilyControls
 
 /// Gate in front of blocked apps: answer questions until enough are right, then the shield
 /// lifts for the grace window.
@@ -13,6 +14,9 @@ struct UnlockView: View {
     let manager: ScreenTimeManager
     /// The app you were headed to, when the questions came from a gate link.
     var target: GatedApp?
+    /// The app you were headed to, when the questions came from the shield's Answer button.
+    /// iOS can't send you back to it from a token, so the joker face tells you where to go.
+    var tapped: PendingGate?
     let onClose: () -> Void
 
     @Environment(\.openURL) private var openURL
@@ -51,8 +55,10 @@ struct UnlockView: View {
 
             if answerable.isEmpty {
                 EmptyState(glyph: .question,
-                           title: "No questions available",
-                           message: "Add cards to your flashcards folder first.") {
+                           title: "No questions to ask",
+                           message: cards.isEmpty
+                                ? "Add a set on the Study tab, then come back to unlock."
+                                : "Your sets need either multiple-choice questions or two cards with different answers.") {
                     Button("Close") { onClose() }
                         .buttonStyle(.soft)
                 }
@@ -167,6 +173,10 @@ struct UnlockView: View {
                         .buttonStyle(.solid(Brand.green))
                     Button("Stay here") { onClose() }
                         .buttonStyle(.soft)
+                } else if let tapped {
+                    wayBack(to: tapped)
+                    Button("Done") { onClose() }
+                        .buttonStyle(.solid(Brand.green))
                 } else {
                     Button("Done") { onClose() }
                         .buttonStyle(.solid(Brand.green))
@@ -174,6 +184,26 @@ struct UnlockView: View {
             }
             .transition(.opacity)
         }
+    }
+
+    /// The token draws as the app's own icon and name, which is the one thing FamilyControls
+    /// will show of an app it otherwise keeps anonymous.
+    private func wayBack(to gate: PendingGate) -> some View {
+        HStack(spacing: 8) {
+            if let token = gate.token {
+                Label(token)
+                    .font(.reading(15))
+                    .foregroundStyle(Brand.ink)
+            } else {
+                Text(gate.name ?? "The app")
+                    .font(.reading(15))
+                    .foregroundStyle(Brand.ink)
+            }
+            Text("is open — switch back to it.")
+                .font(.reading(14))
+                .foregroundStyle(Brand.inkDim)
+        }
+        .multilineTextAlignment(.center)
     }
 
     private var header: some View {
@@ -318,13 +348,19 @@ struct UnlockView: View {
 
     /// Cards that can be scored: multiple-choice cards use their own options; a flip card
     /// borrows other cards' answers as distractors, so it needs at least one to borrow.
-    private var answerable: [Card] {
+    ///
+    /// Static so the Focus tab can ask the same question before offering the gate. Counting
+    /// quiz cards there instead would offer an unlock that lands on "No questions available"
+    /// — a deck of flip cards that all share one answer has plenty of cards and no questions.
+    static func answerable(in cards: [Card]) -> [Card] {
         let distinctAnswers = Set(cards.map(\.answer)).count
         return cards.filter { card in
             if case .multipleChoice = card.content { return true }
             return distinctAnswers >= 2
         }
     }
+
+    private var answerable: [Card] { Self.answerable(in: cards) }
 
     /// The card the last question came from, so the next one can avoid repeating it.
     private var lastAsked: Card.ID? {

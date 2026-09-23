@@ -21,12 +21,14 @@ struct RootView: View {
     @State private var share: PendingShare?
     @State private var collectedShareFile: URL?
 
-    /// A request to show the questions: from a gate link, which has an app to return to,
-    /// or from arriving while shielded, which doesn't. One piece of state for both, so the
-    /// two can't race to present over each other on the same foreground.
+    /// A request to show the questions: from a gate link, which has an app to return to;
+    /// from the shield's Answer button, which knows the app you tapped; or from arriving
+    /// while shielded some other way, which knows nothing. One piece of state for all three,
+    /// so they can't race to present over each other on the same foreground.
     private struct GatePrompt: Identifiable {
         let id = UUID()
         var target: GatedApp?
+        var tapped: PendingGate?
     }
 
     private struct PendingShare: Identifiable {
@@ -45,7 +47,8 @@ struct RootView: View {
                 .safeAreaInset(edge: .bottom) { tabBar }
 
             if let request = prompt {
-                UnlockView(cards: library.quizCards, manager: blocking, target: request.target) {
+                UnlockView(cards: library.quizCards, manager: blocking,
+                           target: request.target, tapped: request.tapped) {
                     prompt = nil
                 }
                 .transition(.dealIn)
@@ -133,12 +136,13 @@ struct RootView: View {
         collectShare()
     }
 
-    /// Arriving while blocked usually means you just tried to open a blocked app.
+    /// Arriving while blocked usually means you just tried to open a blocked app — and if
+    /// you came through the shield's Answer button, the extension left a note of which one.
     private func offerUnlock() {
         guard prompt == nil, share == nil,
               blocking.isShieldActive, !library.quizCards.isEmpty else { return }
         tab = .focus
-        prompt = GatePrompt(target: nil)
+        prompt = GatePrompt(target: nil, tapped: BlockingShared.takePendingGate())
     }
 
     /// Inside an unlock window there's nothing left to earn, so hand the user straight on.

@@ -283,8 +283,6 @@ struct SetListView: View {
                         Button("Delete") { confirmingCull = true }
                             .buttonStyle(.solid(Brand.mult))
                             .disabled(marked.isEmpty)
-                            .opacity(marked.isEmpty ? 0.45 : 1)
-                            .saturation(marked.isEmpty ? 0.3 : 1)
                     } else {
                         Group {
                             Button("Flashcards") { start(.flashcards) }
@@ -292,9 +290,8 @@ struct SetListView: View {
                             Button("Quiz") { start(.quiz) }
                                 .buttonStyle(.solid(Brand.purple))
                         }
+                        // Not on the HStack: in delete mode that would take Cancel with it.
                         .disabled(selectedSets.isEmpty)
-                        .opacity(selectedSets.isEmpty ? 0.45 : 1)
-                        .saturation(selectedSets.isEmpty ? 0.3 : 1)
                     }
                 }
             }

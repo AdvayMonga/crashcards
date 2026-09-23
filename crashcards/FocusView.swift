@@ -7,7 +7,7 @@ struct FocusView: View {
     @Environment(LibraryStore.self) private var library
     @State private var pickerShown = false
     @State private var unlocking = false
-    @State private var startAfterPicking = false
+    @State private var pendingSetup: Setup?
     @State private var gatedApps = GatedApps.all
     @State private var addingApp = false
     @State private var copied: String?
@@ -54,6 +54,9 @@ struct FocusView: View {
                                onSave: { manager.addSchedule($0) },
                                onClose: { editing = nil })
         }
+        // Dismissing the picker without picking anything abandons what it was opened for —
+        // otherwise the next trip through it would spring the earlier answer on you.
+        .onChange(of: pickerShown) { _, shown in if !shown { pendingSetup = nil } }
         .onReceive(tick) { _ in manager.refresh() }
     }
 
@@ -83,13 +86,24 @@ struct FocusView: View {
             }
 
             if manager.isShieldActive {
+                // The gate's own rule, so the button can't offer a quiz it would then
+                // refuse to run — deleting your last set while blocked ends up here.
+                let canAnswer = !UnlockView.answerable(in: library.quizCards).isEmpty
                 Button("Answer \(manager.questionsToUnlock) \(manager.questionsToUnlock == 1 ? "question" : "questions") to unlock") {
                     Haptics.thud()
                     unlocking = true
                 }
                 .buttonStyle(.solid)
-                .disabled(library.quizCards.isEmpty)
+                .disabled(!canAnswer)
                 .padding(.top, 4)
+
+                if !canAnswer {
+                    Text("No questions to ask. Add a set on the Study tab, or turn blocking off below.")
+                        .font(.reading(14))
+                        .foregroundStyle(Brand.inkDim)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -126,8 +140,7 @@ struct FocusView: View {
             }
             PanelRow(first: false) {
                 PanelAction(title: "Add a window") {
-                    editing = FocusSchedule(start: 9 * 60, end: 11 * 60,
-                                            days: FocusSchedule.weekdays)
+                    Task { await setUp(then: .addWindow) }
                 }
             }
         }
@@ -254,7 +267,10 @@ struct FocusView: View {
             }
             PanelRow(first: apps.isEmpty && categories.isEmpty) {
                 PanelAction(title: manager.hasSelection ? "Change apps" : "Choose apps") {
-                    pickerShown = true
+                    Task {
+                        guard await authorize() else { return }
+                        pickerShown = true
+                    }
                 }
             }
         }
@@ -279,6 +295,7 @@ struct FocusView: View {
     }
     private var statusColor: Color {
         if manager.isShieldActive { return Brand.gold }
+        if manager.needsApps { return Brand.mult }
         if manager.isBlocking { return Brand.green }
         return manager.nextScheduled != nil ? Brand.inkDim : Brand.inkFaint
     }
@@ -289,10 +306,12 @@ struct FocusView: View {
         if manager.isShieldActive {
             return manager.activeSchedule != nil ? "Focus window" : "Apps blocked"
         }
+        if manager.needsApps { return "Nothing to block" }
         if manager.isUnlockedNow { return "Unlocked" }
         return manager.nextScheduled != nil ? "Focus scheduled" : "Focus off"
     }
     private var statusDetail: String {
+        if manager.needsApps { return "Choose the apps to block and focus starts working." }
         if manager.isShieldActive || manager.isBlocking { return "" }
         if let next = manager.nextScheduled { return "Next window \(nextText(next))" }
         return "Turn on blocking, or schedule the hours you mean to study."
@@ -314,16 +333,7 @@ struct FocusView: View {
             get: { manager.isBlocking },
             set: { on in
                 guard on else { manager.stopBlocking(); return }
-                Task {
-                    if !manager.isAuthorized { await manager.requestAuthorization() }
-                    guard manager.isAuthorized else { return }
-                    if manager.hasSelection {
-                        manager.startBlocking()
-                    } else {
-                        startAfterPicking = true
-                        pickerShown = true
-                    }
-                }
+                Task { await setUp(then: .block) }
             }
         )
     }
@@ -335,11 +345,47 @@ struct FocusView: View {
             set: { newValue in
                 manager.selection = newValue
                 manager.saveSelection()
-                if startAfterPicking, manager.hasSelection {
-                    startAfterPicking = false
-                    manager.startBlocking()
+                if let next = pendingSetup, manager.hasSelection {
+                    pendingSetup = nil
+                    finish(next)
                 }
             }
         )
+    }
+
+    // MARK: - Setup
+
+    /// What the picker was opened in order to get to.
+    private enum Setup { case block, addWindow }
+
+    /// Permission, then apps, then the thing you actually asked for.
+    ///
+    /// Both the switch and "Add a window" need all three: Screen Time can't be touched
+    /// unauthorized, and a window over an empty picker would block nothing while claiming
+    /// to. Asking in that order means the answer to "why isn't this working" is never
+    /// buried in a step the screen never offered.
+    private func setUp(then next: Setup) async {
+        guard await authorize() else { return }
+        guard manager.hasSelection else {
+            pendingSetup = next
+            pickerShown = true
+            return
+        }
+        finish(next)
+    }
+
+    private func finish(_ next: Setup) {
+        switch next {
+        case .block:
+            manager.startBlocking()
+        case .addWindow:
+            editing = FocusSchedule(start: 9 * 60, end: 11 * 60, days: FocusSchedule.weekdays)
+        }
+    }
+
+    /// The picker renders empty without authorization, so every path to it asks first.
+    private func authorize() async -> Bool {
+        if !manager.isAuthorized { await manager.requestAuthorization() }
+        return manager.isAuthorized
     }
 }

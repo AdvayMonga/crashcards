@@ -60,6 +60,11 @@ enum Brand {
     static let stroke: CGFloat = 2.5
     /// How far a control stands off its ledge before you press it.
     static let ledge: CGFloat = 5
+
+    /// How a control that can't be used reads: washed out and sunk flat into its ledge.
+    /// Applied by the button styles, so `.disabled()` is visible wherever it's written.
+    static let deadOpacity: Double = 0.45
+    static let deadSaturation: Double = 0.3
 }
 
 extension Color {

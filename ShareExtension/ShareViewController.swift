@@ -30,19 +30,35 @@ class ShareViewController: UIViewController {
 
     /// Text as-is; a link as its address; a file by reading it. A file or link names the
     /// set; loose text has nothing to name it with, so the app asks.
+    ///
+    /// A provider answers with whichever shape it holds the type in, not the one you asked
+    /// for: text typed into a share sheet arrives as a `String`, but a `.txt` or `.csv`
+    /// picked in Files arrives as a file `URL` under the same `public.plain-text`. Casting
+    /// straight to `String` drops every file share on the floor, so all three are unwrapped.
     private func load(_ provider: NSItemProvider) async -> (text: String, title: String)? {
         if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
-           let text = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) as? String {
-            return (text, "")
+           let item = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) {
+            if let text = item as? String { return (text, "") }
+            if let url = item as? URL, url.isFileURL { return readFile(url) }
+            if let data = item as? Data, let text = String(data: data, encoding: .utf8) {
+                return (text, "")
+            }
         }
         if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
            let url = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL {
-            let name = url.deletingPathExtension().lastPathComponent
             guard url.isFileURL else { return (url.absoluteString, url.host ?? "") }
-            guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-            return (contents, name)
+            return readFile(url)
         }
         return nil
+    }
+
+    /// A file handed over by another app lives outside this extension's container, and on
+    /// some paths is only readable inside a security scope.
+    private func readFile(_ url: URL) -> (text: String, title: String)? {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return (contents, url.deletingPathExtension().lastPathComponent)
     }
 
     @MainActor

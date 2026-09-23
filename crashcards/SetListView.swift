@@ -264,8 +264,6 @@ struct SetListView: View {
                         .buttonStyle(.solid(Brand.purple))
                 }
                 .disabled(selectedSets.isEmpty)
-                .opacity(selectedSets.isEmpty ? 0.45 : 1)
-                .saturation(selectedSets.isEmpty ? 0.3 : 1)
             }
             .animation(Motion.settle, value: selectedSets.isEmpty)
             .padding(.horizontal, 18)

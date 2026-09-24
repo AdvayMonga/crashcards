@@ -191,30 +191,39 @@ final class ScreenTimeManager {
             return
         }
 
+        var refused: [String] = []
         for schedule in live {
             // A daily repeat needs time-only components; a weekly one pins the weekday too.
             let days: [Int?] = schedule.coversEveryDay ? [nil] : schedule.days.sorted().map { $0 }
             for day in days {
                 let window = DeviceActivitySchedule(
-                    intervalStart: components(minute: schedule.start, weekday: day),
-                    intervalEnd: components(minute: schedule.end, weekday: day),
+                    intervalStart: Self.components(minute: schedule.start, weekday: day),
+                    intervalEnd: Self.components(minute: schedule.end, weekday: day),
                     repeats: true
                 )
                 do {
                     try center.startMonitoring(name(schedule, day: day), during: window)
                 } catch {
-                    errorText = "Couldn't schedule \(schedule.timeText): \(error.localizedDescription)"
-                    return
+                    // Carry on. Returning here left every window after this one
+                    // unregistered — one window iOS disliked quietly switched off the rest.
+                    if !refused.contains(schedule.timeText) { refused.append(schedule.timeText) }
+                    continue
                 }
             }
         }
-        errorText = nil
+        errorText = refused.isEmpty ? nil
+            : "iOS wouldn't take \(refused.joined(separator: ", ")). The other windows are set."
     }
 
-    private func components(minute: Int, weekday: Int?) -> DateComponents {
+    nonisolated static func components(minute: Int, weekday: Int?) -> DateComponents {
+        // Midnight is 1440 minutes in, which is hour 24 — not a time of day, and
+        // DeviceActivitySchedule refuses it. A window "until midnight" ends at the last
+        // minute of the day instead; a minute either way of midnight is not what anyone
+        // set the window for.
+        let clamped = min(max(minute, 0), 24 * 60 - 1)
         var parts = DateComponents()
-        parts.hour = minute / 60
-        parts.minute = minute % 60
+        parts.hour = clamped / 60
+        parts.minute = clamped % 60
         parts.weekday = weekday
         return parts
     }

@@ -15,6 +15,26 @@ struct DayStats: Codable, Hashable {
     var bestStreak = 0
 }
 
+/// Decoded a field at a time, with anything missing left at its default.
+///
+/// Synthesised `Codable` requires every key to be present — a default on the property does
+/// not make it optional to the decoder. So adding one figure in a later version would make
+/// every row already on disk undecodable, and a year of history would read as no history.
+extension DayStats {
+    init(from decoder: any Decoder) throws {
+        let row = try decoder.container(keyedBy: CodingKeys.self)
+        day = try row.decode(String.self, forKey: .day)
+        answered = try row.decodeIfPresent(Int.self, forKey: .answered) ?? 0
+        correct = try row.decodeIfPresent(Int.self, forKey: .correct) ?? 0
+        seconds = try row.decodeIfPresent(Int.self, forKey: .seconds) ?? 0
+        sessions = try row.decodeIfPresent(Int.self, forKey: .sessions) ?? 0
+        unlocks = try row.decodeIfPresent(Int.self, forKey: .unlocks) ?? 0
+        score = try row.decodeIfPresent(Int.self, forKey: .score) ?? 0
+        bestScore = try row.decodeIfPresent(Int.self, forKey: .bestScore) ?? 0
+        bestStreak = try row.decodeIfPresent(Int.self, forKey: .bestStreak) ?? 0
+    }
+}
+
 /// One pass through some cards, handed over when it ends. Flashcards mode doesn't produce
 /// these — it isn't graded, so there's nothing to count.
 struct StudyRun {
@@ -44,6 +64,9 @@ final class StatsStore {
 
     private let defaults: UserDefaults
     private(set) var days: [DayStats] = []
+    /// Set when there was something stored that wouldn't decode. Nothing is written while
+    /// it stands: an empty screen is recoverable, and saving over the bytes is not.
+    private(set) var isUnreadable = false
 
     init(defaults: UserDefaults = BlockingShared.defaults) {
         self.defaults = defaults
@@ -51,9 +74,13 @@ final class StatsStore {
     }
 
     func load() {
-        guard let data = defaults.data(forKey: Self.key),
-              let saved = try? JSONDecoder().decode([DayStats].self, from: data)
-        else { return }
+        // Nothing stored yet is not a failure — that's every first launch.
+        guard let data = defaults.data(forKey: Self.key) else { return }
+        guard let saved = try? JSONDecoder().decode([DayStats].self, from: data) else {
+            isUnreadable = true
+            return
+        }
+        isUnreadable = false
         days = saved.sorted { $0.day < $1.day }
     }
 
@@ -82,7 +109,7 @@ final class StatsStore {
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(days) else { return }
+        guard !isUnreadable, let data = try? JSONEncoder().encode(days) else { return }
         defaults.set(data, forKey: Self.key)
     }
 

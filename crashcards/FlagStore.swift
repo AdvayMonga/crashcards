@@ -129,6 +129,51 @@ final class FlagStore {
         return out.joined(separator: "\n")
     }
 
+    /// Split "Set Title (filename.md)" into its two halves.
+    ///
+    /// Not at the last bracket: a title may have brackets of its own, and a set called
+    /// "Bio (1)" renders as "Bio (1) (Bio (1).md)", which split that way hands back an id of
+    /// "1).md" — every flag in that set orphaned, permanently, since the id never matches a
+    /// real one again.
+    ///
+    /// Nor at the first: "1) (Bio (1).md" ends in .md too. What tells the two apart is that
+    /// a filename's brackets are balanced and a mid-title fragment's are not. So: the first
+    /// candidate that both looks like a set file and reads as one whole.
+    static func splitHeading(_ heading: String) -> (title: String, id: String) {
+        guard heading.hasSuffix(")") else { return (heading, heading) }
+        let body = heading.dropLast()
+
+        func named(_ candidate: String) -> Bool {
+            SetFile.allExtensions.contains { candidate.lowercased().hasSuffix(".\($0)") }
+        }
+        func whole(_ candidate: String) -> Bool {
+            var depth = 0
+            for character in candidate {
+                if character == "(" { depth += 1 }
+                if character == ")" { depth -= 1 }
+                if depth < 0 { return false }
+            }
+            return depth == 0
+        }
+
+        var from = body.startIndex
+        while let open = body[from...].firstIndex(of: "(") {
+            let candidate = String(body[body.index(after: open)...])
+            if named(candidate), whole(candidate) {
+                let title = String(body[..<open]).trimmingCharacters(in: .whitespaces)
+                return (title.isEmpty ? candidate : title, candidate)
+            }
+            from = body.index(after: open)
+        }
+
+        // Nothing in the line looks like a set file — a heading someone wrote by hand, say.
+        // Read it the old way rather than dropping the group and its flags with it.
+        guard let open = body.lastIndex(of: "(") else { return (heading, heading) }
+        let id = String(body[body.index(after: open)...])
+        let title = String(body[..<open]).trimmingCharacters(in: .whitespaces)
+        return (title.isEmpty ? id : title, id)
+    }
+
     private static func parse(_ text: String) -> [Flag] {
         var result: [Flag] = []
         var setID = "", setTitle = ""
@@ -139,13 +184,7 @@ final class FlagStore {
             // "## Set Title (filename.md)"
             if line.hasPrefix("## ") {
                 let heading = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                if heading.hasSuffix(")"), let open = heading.lastIndex(of: "(") {
-                    setTitle = String(heading[..<open]).trimmingCharacters(in: .whitespaces)
-                    setID = String(heading[heading.index(after: open)..<heading.index(before: heading.endIndex)])
-                } else {
-                    setTitle = heading
-                    setID = heading
-                }
+                (setTitle, setID) = splitHeading(heading)
                 continue
             }
 

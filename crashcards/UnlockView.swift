@@ -41,7 +41,7 @@ struct UnlockView: View {
         ZStack {
             TableBackground()
 
-            if answerable.isEmpty {
+            if !canAsk {
                 EmptyState(glyph: .question,
                            title: "No questions to ask",
                            message: cards.isEmpty
@@ -240,21 +240,60 @@ struct UnlockView: View {
         let choices: [Choice]
     }
 
-    /// Cards that can be scored: multiple-choice cards use their own options; a flip card
-    /// borrows other cards' answers as distractors, so it needs at least one to borrow.
+    /// Cards that can be scored: multiple-choice cards use their own options; a flip or
+    /// typed card borrows other cards' answers as distractors, so it needs at least one to
+    /// borrow. Counted on the matcher's rule, because "Paris" and "paris" are one answer
+    /// and a question whose two options are the same word isn't one.
     ///
     /// Static so the Focus tab can ask the same question before offering the gate. Counting
     /// quiz cards there instead would offer an unlock that lands on "No questions available"
     /// — a deck of flip cards that all share one answer has plenty of cards and no questions.
+    ///
+    /// An estimate, not a promise: a card every one of whose neighbours it would itself
+    /// accept is counted here and dropped by `question(from:)`. `makeQuestion` tries the
+    /// next card in that case.
     static func answerable(in cards: [Card]) -> [Card] {
-        let distinctAnswers = Set(cards.map(\.answer)).count
+        let distinctAnswers = Set(cards.map { AnswerMatcher.normalise($0.answer) }).count
         return cards.filter { card in
             if case .multipleChoice = card.content { return true }
             return distinctAnswers >= 2
         }
     }
 
+    /// Wrong answers to put beside `card`'s right one, drawn from what the rest of the
+    /// library answers.
+    ///
+    /// Every spelling the card accepts is kept out, not just the one it prints: a typed card
+    /// taking both "café" and "coffee shop" must never offer "Coffee Shop" as a wrong answer,
+    /// which is exactly what happens when only the primary answer is excluded. Two answers
+    /// that differ by case, accent, punctuation or a leading article are one answer, so the
+    /// pool is thinned on `AnswerMatcher`'s rule rather than on the raw text — the same rule
+    /// that would have marked the typed version right.
+    static func distractors(for card: Card, in cards: [Card], limit: Int = 3) -> [String] {
+        var seen = Set((card.typedAnswers ?? [card.answer]).map(AnswerMatcher.normalise))
+        seen.insert("")
+        var picked: [String] = []
+        for other in cards.map(\.answer).shuffled() {
+            let key = AnswerMatcher.normalise(other)
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            picked.append(other)
+            if picked.count == limit { break }
+        }
+        return picked
+    }
+
     private var answerable: [Card] { Self.answerable(in: cards) }
+
+    /// Is there a question in here at all? `answerable` says a card *looks* askable; this
+    /// says one of them actually produces a question, so the gate can't put up a screen with
+    /// nothing on it.
+    private var canAsk: Bool {
+        answerable.contains { card in
+            if case .multipleChoice = card.content { return true }
+            return !Self.distractors(for: card, in: cards, limit: 1).isEmpty
+        }
+    }
 
     private func makeQuestion() -> Question? {
         let pool = answerable
@@ -262,8 +301,13 @@ struct UnlockView: View {
         // Avoid repeating the card just asked, unless it's the only one.
         let lastAsked = question?.cardID
         let candidates = pool.count > 1 ? pool.filter { $0.id != lastAsked } : pool
-        guard let card = candidates.randomElement() else { return nil }
+        // A card can turn out to have nothing to stand against it — every other answer in
+        // the library is one it would accept too — so move on rather than putting up a
+        // question with a single option, which is no question at all.
+        return candidates.shuffled().lazy.compactMap(question(from:)).first
+    }
 
+    private func question(from card: Card) -> Question? {
         switch card.content {
         case .multipleChoice(let prompt, let choices):
             return Question(cardID: card.id, prompt: prompt, choices: choices.shuffled())
@@ -271,11 +315,11 @@ struct UnlockView: View {
         // tapping screen on purpose: it stands between you and an app you already reached
         // for, so it has to be answerable in a second, not typed into.
         case .flip, .typed:
-            let answer = card.answer
-            let distractors = Set(cards.map(\.answer)).subtracting([answer, ""])
-            let picked = distractors.shuffled().prefix(3).map { Choice(text: $0, isCorrect: false) }
-            return Question(cardID: card.id, prompt: card.prompt,
-                            choices: (picked + [Choice(text: answer, isCorrect: true)]).shuffled())
+            let wrong = Self.distractors(for: card, in: cards)
+            guard !wrong.isEmpty else { return nil }
+            let choices = wrong.map { Choice(text: $0, isCorrect: false) }
+                + [Choice(text: card.answer, isCorrect: true)]
+            return Question(cardID: card.id, prompt: card.prompt, choices: choices.shuffled())
         }
     }
 }

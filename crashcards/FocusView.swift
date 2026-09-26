@@ -1,17 +1,19 @@
 import SwiftUI
 import FamilyControls
 
-/// Focus tab: what's blocked, whether the shield is up, and the way past it.
+/// Focus tab: whether the shield is up, the way past it, and what it covers.
+///
+/// Ordered by what you change most: the switch, then what the gate asks and what it costs,
+/// then the apps, then the windows that block on their own. Anything that is a list of things
+/// — the apps, the sets — is one row here and its own screen behind it.
 struct FocusView: View {
     @Environment(ScreenTimeManager.self) private var manager
     @Environment(LibraryStore.self) private var library
     @State private var pickerShown = false
     @State private var unlocking = false
     @State private var pendingSetup: Setup?
-    @State private var gatedApps = GatedApps.all
-    @State private var addingApp = false
     @State private var choosingSets = false
-    @State private var copied: String?
+    @State private var showingApps = false
     @State private var editing: FocusSchedule?
 
     /// Keeps the countdown honest while the screen is open.
@@ -21,11 +23,10 @@ struct FocusView: View {
         ScrollView {
             VStack(spacing: 16) {
                 status
-                blockingPanel
-                schedulePanel
+                controlsPanel
                 unlockPanel
-                gatedPanel
                 appsPanel
+                schedulePanel
                 if let error = manager.errorText {
                     Text(error)
                         .font(.reading(14))
@@ -41,12 +42,6 @@ struct FocusView: View {
         .scrollIndicators(.hidden)
         .safeAreaInset(edge: .top) { ScreenHeader("Focus") }
         .familyActivityPicker(isPresented: $pickerShown, selection: pickerBinding)
-        .screenLayer(isPresented: $addingApp) {
-            AddGatedAppView(onClose: { addingApp = false }) { app in
-                GatedApps.add(app)
-                gatedApps = GatedApps.all
-            }
-        }
         .screenLayer(isPresented: $unlocking) {
             UnlockView(cards: library.gateCards, manager: manager) { unlocking = false }
         }
@@ -57,6 +52,9 @@ struct FocusView: View {
         }
         .screenLayer(isPresented: $choosingSets) {
             GateSetsView { choosingSets = false }
+        }
+        .screenLayer(isPresented: $showingApps) {
+            BlockedAppsView { showingApps = false }
         }
         // Dismissing the picker without picking anything abandons what it was opened for —
         // otherwise the next trip through it would spring the earlier answer on you.
@@ -81,12 +79,10 @@ struct FocusView: View {
                     .font(.number(30))
                     .foregroundStyle(Brand.green)
                     .monospacedDigit()
-            } else if !statusDetail.isEmpty {
-                Text(statusDetail)
+            } else if let next = manager.nextScheduled, !manager.isShieldActive, !manager.isBlocking {
+                Text("Next \(nextText(next))")
                     .font(.reading(15))
                     .foregroundStyle(Brand.inkDim)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if manager.isShieldActive {
@@ -102,11 +98,9 @@ struct FocusView: View {
                 .padding(.top, 4)
 
                 if !canAnswer {
-                    Text("No questions to ask. Add a set on the Study tab, or turn blocking off below.")
+                    Text("No questions yet — add a set on Study.")
                         .font(.reading(14))
                         .foregroundStyle(Brand.inkDim)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -115,10 +109,49 @@ struct FocusView: View {
         .padding(.horizontal, 18)
     }
 
-    private var blockingPanel: some View {
-        Panel(footnote: "Blocks apps until you turn this off. Scheduled windows below block on their own, whether or not this is on.") {
+    /// The switch, and what the gate asks from. Together because they're the two things you
+    /// reach for, and the top of the screen is where they belong.
+    private var controlsPanel: some View {
+        Panel {
             PanelRow(first: true) {
                 CrashToggle(label: "Block apps", isOn: blockingBinding)
+            }
+            PanelRow {
+                PanelAction(title: "Question sets", detail: gateSetsDetail) {
+                    choosingSets = true
+                }
+            }
+        }
+    }
+
+    /// What it costs to get past the shield. Both numbers reach the block screen too.
+    private var unlockPanel: some View {
+        Panel(title: "Unlock rules") {
+            PanelRow(first: true) {
+                CrashStepper(label: "Questions",
+                             value: Binding(get: { manager.questionsToUnlock },
+                                            set: { manager.questionsToUnlock = $0 }),
+                             range: ScreenTimeManager.questionRange)
+            }
+            PanelRow {
+                CrashStepper(label: "Unlocks for",
+                             value: Binding(get: { manager.unlockMinutes },
+                                            set: { manager.unlockMinutes = $0 }),
+                             range: ScreenTimeManager.minuteRange,
+                             step: ScreenTimeManager.minuteStep,
+                             format: { "\($0) min" })
+            }
+        }
+    }
+
+    /// One row, however many apps are behind it. The tokens are drawn by FamilyControls and
+    /// there can be dozens, so the list lives on its own screen.
+    private var appsPanel: some View {
+        Panel {
+            PanelRow(first: true) {
+                PanelAction(title: "Blocked apps", detail: blockedAppsDetail) {
+                    showingApps = true
+                }
             }
         }
     }
@@ -126,14 +159,12 @@ struct FocusView: View {
     /// Windows that block on their own. Rows can be switched off or deleted, not edited —
     /// a window is two times and a few days, which is quicker to re-add than to amend.
     private var schedulePanel: some View {
-        Panel(title: "Scheduled focus",
-              footnote: "Apps block themselves for these windows even if Crash Cards is closed. Unlocking during one still works — it just lasts \(manager.unlockMinutes) minutes, and then the window takes over again.") {
+        Panel(title: "Scheduled focus") {
             if manager.schedules.isEmpty {
                 PanelRow(first: true) {
-                    Text("No windows yet. Set one for the hours you mean to study.")
+                    Text("No windows yet.")
                         .font(.reading(15))
                         .foregroundStyle(Brand.inkFaint)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 ForEach(Array(manager.schedules.enumerated()), id: \.element.id) { index, schedule in
@@ -187,120 +218,23 @@ struct FocusView: View {
         }
     }
 
-    /// What it costs to get past the shield. Both numbers reach the block screen too.
-    private var unlockPanel: some View {
-        Panel(title: "Unlock rules",
-              footnote: "Answer this many questions correctly and every blocked app opens for this long. Wrong answers don't count against you — the gate just keeps asking.") {
-            PanelRow(first: true) {
-                CrashStepper(label: "Questions",
-                             value: Binding(get: { manager.questionsToUnlock },
-                                            set: { manager.questionsToUnlock = $0 }),
-                             range: ScreenTimeManager.questionRange)
-            }
-            PanelRow {
-                CrashStepper(label: "Unlocks for",
-                             value: Binding(get: { manager.unlockMinutes },
-                                            set: { manager.unlockMinutes = $0 }),
-                             range: ScreenTimeManager.minuteRange,
-                             step: ScreenTimeManager.minuteStep,
-                             format: { "\($0) min" })
-            }
-        }
-    }
-
-    /// Apps that hand you to the questions and take you back when you're done.
-    private var gatedPanel: some View {
-        Panel(title: "Straight to the questions",
-              footnote: "Set this up once per app in Shortcuts: Automation → When \(gatedApps.first?.name ?? "an app") is opened → Run Immediately → Open URL, pasted from the row above. Opening that app then jumps here for the questions and back to it when you pass.") {
-            ForEach(Array(gatedApps.enumerated()), id: \.element.id) { index, app in
-                PanelRow(first: index == 0) {
-                    HStack(spacing: 10) {
-                        Button { copy(app) } label: {
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(app.name)
-                                        .font(.brandLabel)
-                                        .foregroundStyle(Brand.ink)
-                                    Text(copied == app.id ? "Link copied" : app.triggerURL)
-                                        .font(.reading(12))
-                                        .foregroundStyle(copied == app.id ? Brand.green : Brand.inkFaint)
-                                        .lineLimit(1)
-                                }
-                                Spacer(minLength: 0)
-                                PixelIcon(glyph: .copy, size: 16, color: Brand.inkDim)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.pressable)
-
-                        Button {
-                            Haptics.tap()
-                            GatedApps.remove(app)
-                            gatedApps = GatedApps.all
-                        } label: {
-                            PixelIcon(glyph: .close, size: 14, color: Brand.mult)
-                                .frame(width: 32, height: 32)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.pressable)
-                        .accessibilityLabel("Remove \(app.name)")
-                    }
-                }
-            }
-            PanelRow(first: gatedApps.isEmpty) {
-                PanelAction(title: "Add an app") { addingApp = true }
-            }
-        }
-    }
-
-    /// The tokens are rendered by FamilyControls, which only ever draws them its own way.
-    private var appsPanel: some View {
-        Panel(title: "Blocked apps") {
-            let apps = Array(manager.selection.applicationTokens)
-            let categories = Array(manager.selection.categoryTokens)
-
-            ForEach(Array(apps.enumerated()), id: \.element) { index, token in
-                PanelRow(first: index == 0) {
-                    Label(token).font(.reading(15)).foregroundStyle(Brand.ink)
-                }
-            }
-            ForEach(Array(categories.enumerated()), id: \.element) { index, token in
-                PanelRow(first: apps.isEmpty && index == 0) {
-                    Label(token).font(.reading(15)).foregroundStyle(Brand.ink)
-                }
-            }
-            PanelRow(first: apps.isEmpty && categories.isEmpty) {
-                PanelAction(title: manager.hasSelection ? "Change apps" : "Choose apps") {
-                    Task {
-                        guard await authorize() else { return }
-                        pickerShown = true
-                    }
-                }
-            }
-            PanelRow {
-                PanelAction(title: "Question sets", detail: gateSetsDetail) {
-                    choosingSets = true
-                }
-            }
-        }
-    }
-
-    /// "Every set" until you narrow it, then how many of how many — the same shape as the
-    /// apps row above it.
+    /// "Every set" until you narrow it, then how many of how many.
     private var gateSetsDetail: String {
         let chosen = Prefs.gateSetIDs.intersection(Set(library.sets.map(\.id)))
         guard !chosen.isEmpty else { return "Every set" }
         return "\(chosen.count) of \(library.sets.count)"
     }
 
-    private func copy(_ app: GatedApp) {
-        Haptics.tap()
-        UIPasteboard.general.string = app.triggerURL
-        copied = app.id
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            if copied == app.id { copied = nil }
+    /// What the shield covers, counted — the same shape as the sets row above it.
+    private var blockedAppsDetail: String {
+        let apps = manager.selection.applicationTokens.count
+        let categories = manager.selection.categoryTokens.count
+        var parts: [String] = []
+        if apps > 0 { parts.append(apps == 1 ? "1 app" : "\(apps) apps") }
+        if categories > 0 {
+            parts.append(categories == 1 ? "1 category" : "\(categories) categories")
         }
+        return parts.isEmpty ? "None" : parts.joined(separator: ", ")
     }
 
     /// The padlock is the whole state in one glyph: open when your apps are yours, shut
@@ -327,12 +261,6 @@ struct FocusView: View {
         if manager.needsApps { return "Nothing to block" }
         if manager.isUnlockedNow { return "Unlocked" }
         return manager.nextScheduled != nil ? "Focus scheduled" : "Focus off"
-    }
-    private var statusDetail: String {
-        if manager.needsApps { return "Choose the apps to block and focus starts working." }
-        if manager.isShieldActive || manager.isBlocking { return "" }
-        if let next = manager.nextScheduled { return "Next window \(nextText(next))" }
-        return "Turn on blocking, or schedule the hours you mean to study."
     }
 
     /// "today at 9:00 AM" / "Mon at 9:00 AM" — enough to tell a schedule was set right.

@@ -4,37 +4,26 @@ import FamilyControls
 /// Gate in front of blocked apps: answer questions until enough are right, then the shield
 /// lifts for the grace window.
 ///
-/// It's staged as one card being turned over. The masked joker lands first — a tragedy mask
-/// over the face you were after, which is what being blocked is — and it arrives hard. Each
-/// answer turns the card to the next question, and the turn that clears the gate takes the
-/// mask off: the joker grins. It's the same face as the app icon, so the picture is
-/// continuous from the home screen to the block screen to here.
+/// Deliberately the quiz screen with a different scoreboard. A question in front of your
+/// apps is still a question, so it is laid out the way every other question in the app is —
+/// full-width card, answers low where your thumb is — and the only thing the gate adds is
+/// the bar counting how many more it wants. Clearing it turns up the joker: the same face
+/// as the app icon and the block screen, so the picture stays continuous.
 struct UnlockView: View {
     let cards: [Card]
     let manager: ScreenTimeManager
-    /// The app you were headed to, when the questions came from a gate link.
-    var target: GatedApp?
     /// The app you were headed to, when the questions came from the shield's Answer button.
-    /// iOS can't send you back to it from a token, so the joker face tells you where to go.
     var tapped: PendingGate?
     let onClose: () -> Void
 
     @Environment(\.openURL) private var openURL
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(StatsStore.self) private var stats
 
-    /// What the card is showing, in the order it was turned to. Index 0 is always the mask.
-    private enum Face {
-        case masked
-        case question(Question)
-        case joker
-    }
-
-    @State private var faces: [Face] = [.masked]
-    @State private var showing = 0
-    @State private var turn: Double = 0
-    /// The masked card's arrival: it drops in oversized and settles.
-    @State private var landing: CGFloat = 1
+    /// The question on screen, and how many have come before it — the counter doubles as the
+    /// identity that deals each question as its own view.
+    @State private var question: Question?
+    @State private var position = 0
+    @State private var unlocked = false
     @State private var picked: Choice?
     @State private var correct = 0
     @State private var answered = 0
@@ -44,16 +33,15 @@ struct UnlockView: View {
     @State private var misses = 0
 
     private var needed: Int { manager.questionsToUnlock }
-    private var unlocked: Bool {
-        if case .joker = faces[showing] { return true }
-        return false
-    }
+
+    /// The app we can send you back to, if we recognise it.
+    private var wayBack: URL? { AppLinks.url(forAppNamed: tapped?.name) }
 
     var body: some View {
         ZStack {
             TableBackground()
 
-            if answerable.isEmpty {
+            if !canAsk {
                 EmptyState(glyph: .question,
                            title: "No questions to ask",
                            message: cards.isEmpty
@@ -62,233 +50,147 @@ struct UnlockView: View {
                     Button("Close") { onClose() }
                         .buttonStyle(.soft)
                 }
-            } else {
-                gate
+            } else if unlocked {
+                cleared
+            } else if let question {
+                ask(question)
+                    .id(position)   // a new question is dealt as its own view
+                    .transition(.dealtCard)
             }
         }
+        .animation(Motion.deal, value: position)
+        .animation(Motion.deal, value: unlocked)
         .safeAreaInset(edge: .top) { header }
-        .task { await land() }
+        // Keyed on the pool, not just on appearing: the gate can be put on screen in the
+        // same pass that the library is still loading in, and a question picked from nothing
+        // is no question at all. When the cards land, this runs again.
+        .task(id: answerable.count) { if question == nil { question = makeQuestion() } }
         .onDisappear { bank(unlocked: false) }
     }
 
-    // MARK: - The gate
+    // MARK: - The question
 
-    private var gate: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 8) {
-                ProgressTrack(value: correct, total: needed,
-                              label: "\(correct) of \(needed) correct")
-                Text(unlocked ? "Unlocked for \(manager.unlockMinutes) minutes"
-                              : "\(correct) of \(needed) correct")
-                    .font(.brandCaption)
-                    .foregroundStyle(unlocked ? Brand.green : Brand.inkDim)
-            }
+    /// The quiz's layout, point for point: the card floats in the middle at full width and
+    /// sizes itself to the question, and the answers sit low.
+    private func ask(_ question: Question) -> some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 0)
 
-            CardFlipper(turn: turn) { index in
-                face(faces[min(index, faces.count - 1)])
-            }
-            .aspectRatio(0.72, contentMode: .fit)
-            .frame(maxHeight: .infinity)
-            .scaleEffect(landing)
-            .shake(on: misses)
-
-            controls
-                .frame(maxWidth: .infinity)
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 24)
-        .animation(Motion.settle, value: correct)
-    }
-
-    @ViewBuilder
-    private func face(_ face: Face) -> some View {
-        switch face {
-        case .masked:
-            // Blue while it's shut, gold once it opens — the frame line picks up whichever
-            // colour the figure on the card is wearing.
-            CardFace(tint: Brand.chips) {
-                portrait("MaskedJoker", caption: "Blocked")
-            }
-        case .question(let question):
             CardFace(tint: Brand.chips) {
                 Text(question.prompt)
                     .font(.brandCard)
                     .foregroundStyle(Brand.cardInk)
                     .multilineTextAlignment(.center)
-                    .minimumScaleFactor(0.55)
-                    .padding(.horizontal, 30)
+                    // Shrinks first, then truncates — the same rule the quiz card follows,
+                    // so a question that fits there fits here.
+                    .lineLimit(9)
+                    .minimumScaleFactor(0.6)
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 34)
                 CardIndex(text: "?", tint: Brand.chips)
             }
-        case .joker:
-            CardFace {
-                portrait("JokerFigure", caption: "Yours")
-            }
-        }
-    }
+            .fixedSize(horizontal: false, vertical: true)
 
-    /// The figure fills the card the way the icon fills its square — the face is the point,
-    /// so it is given the room rather than floated in the middle of a lot of stock.
-    private func portrait(_ image: String, caption: String) -> some View {
-        VStack(spacing: 6) {
-            Image(image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity)
-            Text(caption)
-                .font(.pixel(22))
-                .foregroundStyle(Brand.cardInk.opacity(0.6))
-        }
-        .padding(.horizontal, 26)
-        .padding(.top, 26)
-        .padding(.bottom, 20)
-    }
+            Spacer(minLength: 0)
 
-    @ViewBuilder private var controls: some View {
-        switch faces[showing] {
-        case .masked:
-            Text("Turning it over…")
-                .font(.brandCaption)
-                .foregroundStyle(Brand.inkFaint)
-                .frame(height: 52)
-
-        case .question(let question):
             VStack(spacing: 12) {
                 ForEach(question.choices) { choice in
-                    choiceRow(choice)
+                    OptionRow(choice: choice, picked: picked) { answer(choice) }
                 }
             }
-            .transition(.opacity)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 28)
+        .shake(on: misses)
+    }
 
-        case .joker:
+    // MARK: - Cleared
+
+    /// The reward, and the way back. The joker gets the whole card because it's the only
+    /// thing on the screen at this point.
+    private var cleared: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 0)
+
+            CardFace {
+                VStack(spacing: 6) {
+                    Image("JokerFigure")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                    Text("Yours")
+                        .font(.pixel(22))
+                        .foregroundStyle(Brand.cardInk.opacity(0.6))
+                }
+                .padding(.horizontal, 26)
+                .padding(.top, 26)
+                .padding(.bottom, 20)
+            }
+            .aspectRatio(0.72, contentMode: .fit)
+
+            Spacer(minLength: 0)
+
             VStack(spacing: 12) {
                 if returnFailed {
-                    Text("\(target?.name ?? "That app") didn't open. Check its link in Focus, or switch to it yourself.")
+                    Text("\(tapped?.name ?? "That app") wouldn't open. Switch to it yourself — it's unblocked either way.")
                         .font(.reading(14))
                         .foregroundStyle(Brand.mult)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let target {
-                    Button("Open \(target.name)") { goToTarget(target) }
+                if let name = tapped?.name, wayBack != nil {
+                    Button("Open \(name)") { goBack() }
                         .buttonStyle(.solid(Brand.green))
                     Button("Stay here") { onClose() }
                         .buttonStyle(.soft)
-                } else if let tapped {
-                    wayBack(to: tapped)
-                    Button("Done") { onClose() }
-                        .buttonStyle(.solid(Brand.green))
                 } else {
                     Button("Done") { onClose() }
                         .buttonStyle(.solid(Brand.green))
                 }
             }
-            .transition(.opacity)
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 28)
     }
 
-    /// The token draws as the app's own icon and name, which is the one thing FamilyControls
-    /// will show of an app it otherwise keeps anonymous.
-    private func wayBack(to gate: PendingGate) -> some View {
-        HStack(spacing: 8) {
-            if let token = gate.token {
-                Label(token)
-                    .font(.reading(15))
-                    .foregroundStyle(Brand.ink)
-            } else {
-                Text(gate.name ?? "The app")
-                    .font(.reading(15))
-                    .foregroundStyle(Brand.ink)
-            }
-            Text("is open — switch back to it.")
-                .font(.reading(14))
-                .foregroundStyle(Brand.inkDim)
-        }
-        .multilineTextAlignment(.center)
+    /// Send you back to the app you were opening. Nothing to do if we don't know its link —
+    /// the shield is down, so switching back by hand works.
+    private func goBack() {
+        guard let url = wayBack else { returnFailed = true; return }
+        openURL(url) { opened in returnFailed = !opened }
     }
 
+    // MARK: - Chrome
+
+    /// The quiz's header without the things a gate doesn't have: no score, and no reveal —
+    /// giving the answer away is the one thing that would make the gate pointless.
     private var header: some View {
         HStack(spacing: 12) {
-            if !unlocked {
+            if unlocked {
+                Color.clear.frame(width: 44, height: 1)
+            } else {
                 HeaderChip(glyph: .close, name: "Not now") { onClose() }
             }
-            Spacer(minLength: 0)
-            Text("Unlock")
-                .font(.brandTitle)
-                .foregroundStyle(Brand.ink)
-                .shadow(color: Brand.outline, radius: 0, x: 2, y: 2)
-            Spacer(minLength: 0)
-            Color.clear.frame(width: 44, height: 1)
+
+            ProgressTrack(value: correct, total: needed,
+                          label: "\(correct) of \(needed) correct")
+
+            Text(unlocked ? "\(manager.unlockMinutes) min" : "\(correct)/\(needed)")
+                .font(.brandNumber)
+                .foregroundStyle(unlocked ? Brand.green : Brand.gold)
+                .monospacedDigit()
+                .contentTransition(.numericText())
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 8)
+        .animation(Motion.settle, value: correct)
     }
 
-    private func choiceRow(_ choice: Choice) -> some View {
-        let judged = picked != nil
-        let tint = tint(for: choice)
-        return Button { answer(choice) } label: {
-            HStack(spacing: 12) {
-                Text(choice.text)
-                    .font(.brandBody)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if judged, choice.isCorrect {
-                    PixelIcon(glyph: .check, size: 18, color: Brand.outline)
-                } else if judged, choice == picked {
-                    PixelIcon(glyph: .close, size: 18, color: Brand.outline)
-                }
-            }
-            .foregroundStyle(tint == nil ? Brand.ink : Brand.outline)
-            .padding(.vertical, 16)
-            .padding(.horizontal, 18)
-            .slab(tint ?? Brand.surface, lift: tint != nil ? 0 : Brand.ledge,
-                  highlight: tint == nil ? 0.08 : 0.22)
-            .opacity(judged && tint == nil ? 0.4 : 1)
-        }
-        .buttonStyle(.pressable)
-        .disabled(judged)
-        .scaleEffect(judged && choice == picked ? 1.05 : 1)
-        .animation(Motion.pop, value: picked)
-    }
+    // MARK: - Answering
 
-    private func tint(for choice: Choice) -> Color? {
-        guard let picked else { return nil }
-        if choice.isCorrect { return Brand.green }
-        return choice == picked ? Brand.mult : nil
-    }
-
-    // MARK: - Staging
-
-    /// The block landing: the lock card drops in oversized, settles, and turns itself over
-    /// to the first question. Reduce Motion gets the question without the theatre.
-    private func land() async {
-        guard !faces.isEmpty, answerable.isEmpty == false else { return }
-        guard !reduceMotion else {
-            deal(makeQuestion().map(Face.question) ?? .joker)
-            return
-        }
-
-        landing = 1.3
-        Haptics.thud()
-        withAnimation(.spring(response: 0.36, dampingFraction: 0.52)) { landing = 1 }
-        misses += 1   // one shake, so the block reads as an impact
-
-        try? await Task.sleep(for: .seconds(0.75))
-        deal(makeQuestion().map(Face.question) ?? .joker)
-    }
-
-    /// Turn the card to a new face.
-    private func deal(_ next: Face) {
-        faces.append(next)
-        let index = faces.count - 1
-        showing = index
-        withAnimation(reduceMotion ? .easeInOut(duration: 0.22)
-                                   : .spring(response: 0.5, dampingFraction: 0.72)) {
-            turn = Double(index)
-        }
-    }
-
-    /// Score the tap, let the colour land, then turn to whatever comes next.
+    /// Score the tap, let the colour land, then move on — the quiz's timings exactly.
     private func answer(_ choice: Choice) {
         guard picked == nil else { return }
         picked = choice
@@ -302,18 +204,17 @@ struct UnlockView: View {
         }
 
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.7))
+            try? await Task.sleep(for: .seconds(choice.isCorrect ? 0.55 : 0.95))
             picked = nil
             if correct >= needed {
                 manager.unlock()
                 bank(unlocked: true)
                 Haptics.thud()
-                deal(.joker)
-                if let target { goToTarget(target) }
-            } else if let question = makeQuestion() {
-                deal(.question(question))
+                unlocked = true
+                goBack()
             } else {
-                deal(.joker)
+                question = makeQuestion()
+                position += 1
             }
         }
     }
@@ -331,13 +232,6 @@ struct UnlockView: View {
                               unlocks: unlocked ? 1 : 0))
     }
 
-    /// Hand you back to the app you were opening.
-    private func goToTarget(_ app: GatedApp) {
-        guard let url = app.returnURL else { returnFailed = true; return }
-        GatedApps.recordRedirect(to: app)
-        openURL(url) { opened in returnFailed = !opened }
-    }
-
     // MARK: - Question building
 
     struct Question {
@@ -346,37 +240,74 @@ struct UnlockView: View {
         let choices: [Choice]
     }
 
-    /// Cards that can be scored: multiple-choice cards use their own options; a flip card
-    /// borrows other cards' answers as distractors, so it needs at least one to borrow.
+    /// Cards that can be scored: multiple-choice cards use their own options; a flip or
+    /// typed card borrows other cards' answers as distractors, so it needs at least one to
+    /// borrow. Counted on the matcher's rule, because "Paris" and "paris" are one answer
+    /// and a question whose two options are the same word isn't one.
     ///
     /// Static so the Focus tab can ask the same question before offering the gate. Counting
     /// quiz cards there instead would offer an unlock that lands on "No questions available"
     /// — a deck of flip cards that all share one answer has plenty of cards and no questions.
+    ///
+    /// An estimate, not a promise: a card every one of whose neighbours it would itself
+    /// accept is counted here and dropped by `question(from:)`. `makeQuestion` tries the
+    /// next card in that case.
     static func answerable(in cards: [Card]) -> [Card] {
-        let distinctAnswers = Set(cards.map(\.answer)).count
+        let distinctAnswers = Set(cards.map { AnswerMatcher.normalise($0.answer) }).count
         return cards.filter { card in
             if case .multipleChoice = card.content { return true }
             return distinctAnswers >= 2
         }
     }
 
+    /// Wrong answers to put beside `card`'s right one, drawn from what the rest of the
+    /// library answers.
+    ///
+    /// Every spelling the card accepts is kept out, not just the one it prints: a typed card
+    /// taking both "café" and "coffee shop" must never offer "Coffee Shop" as a wrong answer,
+    /// which is exactly what happens when only the primary answer is excluded. Two answers
+    /// that differ by case, accent, punctuation or a leading article are one answer, so the
+    /// pool is thinned on `AnswerMatcher`'s rule rather than on the raw text — the same rule
+    /// that would have marked the typed version right.
+    static func distractors(for card: Card, in cards: [Card], limit: Int = 3) -> [String] {
+        var seen = Set((card.typedAnswers ?? [card.answer]).map(AnswerMatcher.normalise))
+        seen.insert("")
+        var picked: [String] = []
+        for other in cards.map(\.answer).shuffled() {
+            let key = AnswerMatcher.normalise(other)
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            picked.append(other)
+            if picked.count == limit { break }
+        }
+        return picked
+    }
+
     private var answerable: [Card] { Self.answerable(in: cards) }
 
-    /// The card the last question came from, so the next one can avoid repeating it.
-    private var lastAsked: Card.ID? {
-        for face in faces.reversed() {
-            if case .question(let question) = face { return question.cardID }
+    /// Is there a question in here at all? `answerable` says a card *looks* askable; this
+    /// says one of them actually produces a question, so the gate can't put up a screen with
+    /// nothing on it.
+    private var canAsk: Bool {
+        answerable.contains { card in
+            if case .multipleChoice = card.content { return true }
+            return !Self.distractors(for: card, in: cards, limit: 1).isEmpty
         }
-        return nil
     }
 
     private func makeQuestion() -> Question? {
         let pool = answerable
         guard !pool.isEmpty else { return nil }
         // Avoid repeating the card just asked, unless it's the only one.
+        let lastAsked = question?.cardID
         let candidates = pool.count > 1 ? pool.filter { $0.id != lastAsked } : pool
-        guard let card = candidates.randomElement() else { return nil }
+        // A card can turn out to have nothing to stand against it — every other answer in
+        // the library is one it would accept too — so move on rather than putting up a
+        // question with a single option, which is no question at all.
+        return candidates.shuffled().lazy.compactMap(question(from:)).first
+    }
 
+    private func question(from card: Card) -> Question? {
         switch card.content {
         case .multipleChoice(let prompt, let choices):
             return Question(cardID: card.id, prompt: prompt, choices: choices.shuffled())
@@ -384,11 +315,11 @@ struct UnlockView: View {
         // tapping screen on purpose: it stands between you and an app you already reached
         // for, so it has to be answerable in a second, not typed into.
         case .flip, .typed:
-            let answer = card.answer
-            let distractors = Set(cards.map(\.answer)).subtracting([answer, ""])
-            let picked = distractors.shuffled().prefix(3).map { Choice(text: $0, isCorrect: false) }
-            return Question(cardID: card.id, prompt: card.prompt,
-                            choices: (picked + [Choice(text: answer, isCorrect: true)]).shuffled())
+            let wrong = Self.distractors(for: card, in: cards)
+            guard !wrong.isEmpty else { return nil }
+            let choices = wrong.map { Choice(text: $0, isCorrect: false) }
+                + [Choice(text: card.answer, isCorrect: true)]
+            return Question(cardID: card.id, prompt: card.prompt, choices: choices.shuffled())
         }
     }
 }

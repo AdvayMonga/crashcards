@@ -4,9 +4,9 @@ import SwiftUI
 /// setup is offered from the Study tab's empty state, not demanded up front.
 ///
 /// Re-scans on first appearance and whenever the app returns to the foreground. Two things
-/// can interrupt that arrival: a `crashcards://gate?app=…` link (a Shortcuts automation
-/// reacting to you opening a blocked app), which shows the questions and hands you back to
-/// that app; and text waiting from the share extension, which opens the importer.
+/// can interrupt that arrival: arriving while blocked, which shows the questions and hands
+/// you back to the app you were opening; and text waiting from the share extension, which
+/// opens the importer.
 ///
 /// Nothing here is a `TabView`, a sheet or an alert: the tabs cross-fade rather than slide,
 /// and everything that covers the screen is a layer in this one `ZStack`.
@@ -15,19 +15,17 @@ struct RootView: View {
     @Environment(FlagStore.self) private var flags
     @Environment(ScreenTimeManager.self) private var blocking
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.openURL) private var openURL
     @State private var tab = Tab.study
     @State private var prompt: GatePrompt?
     @State private var share: PendingShare?
     @State private var collectedShareFile: URL?
 
-    /// A request to show the questions: from a gate link, which has an app to return to;
-    /// from the shield's Answer button, which knows the app you tapped; or from arriving
-    /// while shielded some other way, which knows nothing. One piece of state for all three,
-    /// so they can't race to present over each other on the same foreground.
+    /// A request to show the questions: from the shield's Answer button, which knows the app
+    /// you tapped, or from arriving while shielded some other way, which knows nothing. One
+    /// piece of state for both, so they can't race to present over each other on the same
+    /// foreground.
     private struct GatePrompt: Identifiable {
         let id = UUID()
-        var target: GatedApp?
         var tapped: PendingGate?
     }
 
@@ -48,7 +46,7 @@ struct RootView: View {
 
             if let request = prompt {
                 UnlockView(cards: library.gateCards, manager: blocking,
-                           target: request.target, tapped: request.tapped) {
+                           tapped: request.tapped) {
                     prompt = nil
                 }
                 .transition(.dealIn)
@@ -84,10 +82,6 @@ struct RootView: View {
                 collectShare()
                 offerUnlock()
             }
-        }
-        .onOpenURL { url in
-            guard GatedApps.isGate(url) else { return }
-            openGate(for: GatedApps.target(of: url))
         }
     }
 
@@ -142,21 +136,6 @@ struct RootView: View {
         guard prompt == nil, share == nil,
               blocking.isShieldActive, !library.gateCards.isEmpty else { return }
         tab = .focus
-        prompt = GatePrompt(target: nil, tapped: BlockingShared.takePendingGate())
-    }
-
-    /// Inside an unlock window there's nothing left to earn, so hand the user straight on.
-    private func openGate(for app: GatedApp?) {
-        // Mid-import: don't swap one full-screen layer for another in a single update.
-        // Nothing is lost — the shield is still up, and Focus has the same questions.
-        guard share == nil else { return }
-
-        guard blocking.isUnlockedNow else {
-            prompt = GatePrompt(target: app)
-            return
-        }
-        guard let app, let url = app.returnURL, !GatedApps.justRedirected(to: app) else { return }
-        GatedApps.recordRedirect(to: app)
-        openURL(url) { opened in if !opened { prompt = GatePrompt(target: app) } }
+        prompt = GatePrompt(tapped: BlockingShared.takePendingGate())
     }
 }

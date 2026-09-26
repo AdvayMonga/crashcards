@@ -376,7 +376,10 @@ private struct AnswerRow: View {
 }
 
 /// One answer. Presses into its ledge like every other control, then lights up green or red.
-private struct OptionRow: View {
+///
+/// Shared with the unlock gate: a question in front of your apps is answered on the same
+/// rows as a question in a quiz, so there is one of these rather than two that drift.
+struct OptionRow: View {
     let choice: Choice
     let picked: Choice?
     /// The answer was given away rather than chosen: the right option lights up and no

@@ -7,7 +7,6 @@ import SwiftUI
 /// so you can fix it in Obsidian yourself.
 struct FileProblemsView: View {
     @Environment(LibraryStore.self) private var library
-    @Environment(FlagStore.self) private var flags
     let onClose: () -> Void
 
     var body: some View {
@@ -16,7 +15,7 @@ struct FileProblemsView: View {
 
             ScrollView {
                 VStack(spacing: 16) {
-                    if library.issueCount == 0 && flags.loadError == nil {
+                    if library.issueCount == 0 {
                         Panel {
                             PanelRow(first: true) {
                                 HStack(spacing: 12) {
@@ -25,17 +24,6 @@ struct FileProblemsView: View {
                                         .font(.brandLabel)
                                         .foregroundStyle(Brand.ink)
                                 }
-                            }
-                        }
-                    }
-
-                    if let error = flags.loadError {
-                        Panel(title: FlagStore.filename,
-                              footnote: "Flagging is paused so this file isn't overwritten. Fix or delete it, then reopen the app.") {
-                            PanelRow(first: true) {
-                                Text(error)
-                                    .font(.reading(14))
-                                    .foregroundStyle(Brand.mult)
                             }
                         }
                     }

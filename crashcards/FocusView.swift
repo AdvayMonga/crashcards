@@ -4,8 +4,8 @@ import FamilyControls
 /// Focus tab: whether the shield is up, the way past it, and what it covers.
 ///
 /// Ordered by what you change most: the switch, then what the gate asks and what it costs,
-/// then the apps, then the windows that block on their own. Anything that is a list of things
-/// — the apps, the sets — is one row here and its own screen behind it.
+/// then the apps, then the windows that block on their own. The lists are one row each: the
+/// sets have their own screen, the apps go straight to the system picker.
 struct FocusView: View {
     @Environment(ScreenTimeManager.self) private var manager
     @Environment(LibraryStore.self) private var library
@@ -13,7 +13,6 @@ struct FocusView: View {
     @State private var unlocking = false
     @State private var pendingSetup: Setup?
     @State private var choosingSets = false
-    @State private var showingApps = false
     @State private var editing: FocusSchedule?
 
     /// Keeps the countdown honest while the screen is open.
@@ -52,9 +51,6 @@ struct FocusView: View {
         }
         .screenLayer(isPresented: $choosingSets) {
             GateSetsView { choosingSets = false }
-        }
-        .screenLayer(isPresented: $showingApps) {
-            BlockedAppsView { showingApps = false }
         }
         // Dismissing the picker without picking anything abandons what it was opened for —
         // otherwise the next trip through it would spring the earlier answer on you.
@@ -144,13 +140,13 @@ struct FocusView: View {
         }
     }
 
-    /// One row, however many apps are behind it. The tokens are drawn by FamilyControls and
-    /// there can be dozens, so the list lives on its own screen.
+    /// One row, straight into the system picker — the only place the list can be changed,
+    /// and the only place it can be read back, since the tokens are FamilyControls' to draw.
     private var appsPanel: some View {
         Panel {
             PanelRow(first: true) {
                 PanelAction(title: "Blocked apps", detail: blockedAppsDetail) {
-                    showingApps = true
+                    Task { await chooseApps() }
                 }
             }
         }
@@ -318,6 +314,14 @@ struct FocusView: View {
             return
         }
         finish(next)
+    }
+
+    /// Editing the list isn't a setup step — nothing is waiting on it, so `pendingSetup` stays
+    /// nil and closing the picker neither starts the shield nor adds a window.
+    private func chooseApps() async {
+        guard await authorize() else { return }
+        pendingSetup = nil
+        pickerShown = true
     }
 
     private func finish(_ next: Setup) {

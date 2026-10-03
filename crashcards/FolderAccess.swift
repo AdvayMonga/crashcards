@@ -1,24 +1,15 @@
 import Foundation
 
 enum FolderError: LocalizedError {
-    case noFolder
-    case primaryUnavailable
     case duplicateFolder
     case nestedFolder
-    case notAppFile(String)
 
     var errorDescription: String? {
         switch self {
-        case .noFolder:
-            return "No flashcards folder has been chosen yet."
-        case .primaryUnavailable:
-            return "Your first flashcards folder isn't available right now, so \(FlagStore.filename) can't be read or written. It may be offline in iCloud, moved, or deleted — check it in Settings."
         case .duplicateFolder:
             return "That folder is already attached."
         case .nestedFolder:
             return "That folder overlaps one you've already added, so every set inside it would load twice."
-        case .notAppFile(let name):
-            return "Crash Cards only ever writes \(FlagStore.filename); it refused to write “\(name)”."
         }
     }
 }
@@ -43,25 +34,19 @@ struct LibraryLoad {
     var folderErrors: [String] = []
 }
 
-/// The result of reading a file the app owns, keeping "not there yet" distinct from
-/// "there but unreadable" — overwriting the latter would destroy the user's data.
-enum AppFileRead {
-    case missing
-    case contents(String)
-    case failure(String)
-}
-
 /// Persistent, sandbox-safe access to the user-picked flashcards folders.
 ///
 /// The user can attach several folders (each stored as a security-scoped bookmark); the app
 /// reads every set file under each one, recursively. No paths are hardcoded. The app's own
 /// local library is always scanned too, so no folder is required to use the app.
 ///
-/// Read-only by design: the *only* file this app ever writes is `Flagged.md`, in the first
-/// attached folder — or in the local library when no folder is attached, so flagging works
-/// on the folderless path too. `writeAppFile` refuses anything else, so a source deck can
-/// never be modified by the app.
+/// Strictly read-only: nothing here writes to an attached folder at all.
 enum FolderAccess {
+    /// Written by an older version's card flagging, which is gone. Still skipped by the
+    /// scan: someone who used it has the file sitting in their folder, and reading it back
+    /// as a deck would list a duplicate of every card they ever flagged.
+    static let retiredFlagFile = "Flagged.md"
+
     private static let bookmarksKey = "flashcardsFolderBookmarks"
     private static var defaults: UserDefaults { .standard }
 
@@ -207,78 +192,14 @@ enum FolderAccess {
             // A directory named "foo.md" is not a deck.
             guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
             else { continue }
-            // The app writes Flagged.md itself; don't read it back in as a set.
-            guard url.lastPathComponent.caseInsensitiveCompare(FlagStore.filename) != .orderedSame
+            // Left behind by the retired flagging feature; not a deck.
+            guard url.lastPathComponent.caseInsensitiveCompare(retiredFlagFile) != .orderedSame
             else { continue }
             result.append(url)
         }
         return result
     }
 
-    // MARK: - App-written files
-
-    /// The first attached folder. Deliberately *not* "the first one that resolves": app files
-    /// must always live in the same place, so an offline folder is an error, not a silent move.
-    private static func primaryFolder() throws -> URL {
-        guard let data = bookmarks().first else { throw FolderError.noFolder }
-        guard let url = try? resolve(data) else { throw FolderError.primaryUnavailable }
-        return url
-    }
-
-    /// Where the app's own files live: the first attached folder, or the local library when
-    /// there isn't one. A folder is optional everywhere else in the app, so app files can't
-    /// require one either.
-    private static func appFileFolder() throws -> URL {
-        bookmarks().isEmpty ? LocalLibrary.directory : try primaryFolder()
-    }
-
-    /// Read a file the app owns.
-    static func readAppFile(_ name: String) -> AppFileRead {
-        let folder: URL
-        do {
-            folder = try appFileFolder()
-        } catch {
-            return .failure(error.localizedDescription)
-        }
-
-        let scoped = folder.startAccessingSecurityScopedResource()
-        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
-
-        let url = folder.appendingPathComponent(name)
-        guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
-        do {
-            return .contents(try String(contentsOf: url, encoding: .utf8))
-        } catch {
-            return .failure(error.localizedDescription)
-        }
-    }
-
-    /// Write a file the app owns, atomically.
-    ///
-    /// Writes to a hidden temp file first and swaps it in, so a failure part-way through
-    /// leaves the existing file intact rather than truncated.
-    static func writeAppFile(_ name: String, contents: String) throws {
-        // The single point where this app can modify the user's folder. Keep it to one file.
-        guard name == FlagStore.filename else { throw FolderError.notAppFile(name) }
-
-        let folder = try appFileFolder()
-        let scoped = folder.startAccessingSecurityScopedResource()
-        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
-
-        let target = folder.appendingPathComponent(name)
-        let temp = folder.appendingPathComponent(".\(name).tmp")
-        try contents.write(to: temp, atomically: false, encoding: .utf8)
-        do {
-            if FileManager.default.fileExists(atPath: target.path) {
-                _ = try FileManager.default.replaceItemAt(target, withItemAt: temp)
-            } else {
-                try FileManager.default.moveItem(at: temp, to: target)
-            }
-        } catch {
-            try? FileManager.default.removeItem(at: temp)
-            throw error
-        }
-    }
 
     private static func resolve(_ data: Data) throws -> URL {
         var stale = false

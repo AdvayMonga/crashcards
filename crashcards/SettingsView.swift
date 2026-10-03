@@ -3,11 +3,10 @@ import SwiftUI
 /// Settings tab: manage the attached folders (add / remove) and review file problems.
 struct SettingsView: View {
     @Environment(LibraryStore.self) private var library
-    @Environment(FlagStore.self) private var flags
     @State private var importing = false
     @State private var showingProblems = false
 
-    private var hasProblems: Bool { library.issueCount > 0 || flags.loadError != nil }
+    private var hasProblems: Bool { library.issueCount > 0 }
 
     var body: some View {
         ScrollView {
@@ -24,7 +23,6 @@ struct SettingsView: View {
         .screenLayer(isPresented: $showingProblems) {
             FileProblemsView { showingProblems = false }
                 .environment(library)
-                .environment(flags)
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
             switch result {
@@ -83,12 +81,9 @@ struct SettingsView: View {
 
     private var libraryPanel: some View {
         Panel(title: "Library",
-              footnote: "Crash Cards never edits your .md files. The only file it writes is \(FlagStore.filename) — in your first folder, or alongside the app's own sets when you haven't added one.") {
+              footnote: "Crash Cards never edits your .md files.") {
             PanelRow(first: true) {
                 StatRow(label: "Sets loaded", value: "\(library.sets.count)")
-            }
-            PanelRow {
-                StatRow(label: "Flagged cards", value: "\(flags.flags.count)")
             }
             PanelRow {
                 Button { showingProblems = true } label: {

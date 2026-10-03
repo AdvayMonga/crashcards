@@ -43,12 +43,26 @@ struct ImportSetView: View {
     /// Read off `SetFile`, so the page can't offer a format the scan won't read.
     private var formatsPanel: some View {
         Panel(title: "Deck formats") {
-            ForEach(Array(SetFile.allExtensions.enumerated()), id: \.element) { index, ext in
+            ForEach(Array(formats.enumerated()), id: \.element.name) { index, format in
                 PanelRow(first: index == 0) {
-                    StatRow(label: ImportSetView.name(of: ext), value: ".\(ext)")
+                    StatRow(label: format.name, value: format.extensions)
                 }
             }
         }
+    }
+
+    /// One row per format, not per extension — Markdown reads both `.md` and `.markdown`,
+    /// and two rows saying "Markdown" is two rows saying one thing. An extension with no
+    /// nicer name still gets its own row, so adding one to the scanner can't hide it here.
+    private var formats: [(name: String, extensions: String)] {
+        var order: [String] = []
+        var byName: [String: [String]] = [:]
+        for ext in SetFile.allExtensions {
+            let name = Self.name(of: ext)
+            if byName[name] == nil { order.append(name) }
+            byName[name, default: []].append(".\(ext)")
+        }
+        return order.map { ($0, byName[$0]!.joined(separator: "  ")) }
     }
 
     private static func name(of ext: String) -> String {
@@ -57,7 +71,7 @@ struct ImportSetView: View {
         case "txt", "text":    return "Plain text"
         case "csv":            return "Comma-separated"
         case "tsv":            return "Tab-separated"
-        default:               return "Text"
+        default:               return ext.uppercased()
         }
     }
 }

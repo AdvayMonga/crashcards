@@ -7,7 +7,6 @@ import Foundation
 /// affordance — there's no checkbox doing the work on its own.
 struct SetListView: View {
     @Environment(LibraryStore.self) private var library
-    @Environment(FlagStore.self) private var flags
     @Environment(StatsStore.self) private var stats
     @State private var selected: Set<String> = Prefs.selectedSetIDs
     @State private var studyMode: StudyMode?
@@ -29,9 +28,7 @@ struct SetListView: View {
     private var allSelected: Bool {
         !library.sets.isEmpty && selected.isSuperset(of: library.sets.map(\.id))
     }
-    private var hasProblems: Bool {
-        library.issueCount > 0 || flags.loadError != nil
-    }
+    private var hasProblems: Bool { library.issueCount > 0 }
 
     var body: some View {
         content
@@ -43,7 +40,6 @@ struct SetListView: View {
             .screenLayer(isPresented: $showingProblems) {
                 FileProblemsView { showingProblems = false }
                     .environment(library)
-                    .environment(flags)
             }
             .screenLayer(isPresented: $importingSet) {
                 ImportSetView(onClose: { importingSet = false })
@@ -210,7 +206,6 @@ struct SetListView: View {
 
     private var problemSummary: String {
         let count = library.issueCount
-        if count == 0 { return "\(FlagStore.filename) couldn't be read" }
         return count == 1 ? "1 file problem found" : "\(count) file problems found"
     }
 

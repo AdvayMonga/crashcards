@@ -86,7 +86,7 @@ which is granted by hand per bundle ID.
 xcodebuild test -scheme crashcards -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-169 tests across 21 suites, all pure logic — parsers, scoring, session state, schedules. No UI
+165 tests across 21 suites, all pure logic — parsers, scoring, session state, schedules. No UI
 tests. CI runs the same command on every pull request.
 
 ## Layout

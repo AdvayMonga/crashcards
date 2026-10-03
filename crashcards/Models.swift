@@ -22,7 +22,7 @@ enum CardContent: Hashable {
 struct Card: Identifiable, Hashable {
     let id = UUID()
     let content: CardContent
-    /// Where the card came from — filename and title of its `.md`. Used to group flags.
+    /// Where the card came from — filename and title of its `.md`.
     let setID: String
     let setTitle: String
 

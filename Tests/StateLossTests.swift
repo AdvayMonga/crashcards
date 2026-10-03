@@ -2,53 +2,9 @@ import Foundation
 import Testing
 @testable import crashcards
 
-/// Three ways the app could lose something the user can't get back. Each of these fails
-/// against the code as it was.
+/// Ways the app could lose something the user can't get back. Each of these fails against
+/// the code as it was.
 struct StateLossTests {
-
-    // MARK: - Flags survive a bracket in the filename
-
-    /// "Bio (1)" renders as "## Bio (1) (Bio (1).md)". Split at the last bracket that reads
-    /// back as "1).md", and every flag in the set is orphaned for good.
-    @Test func readsTheIdBackFromAHeadingWhoseTitleHasBrackets() {
-        let (title, id) = FlagStore.splitHeading("Bio (1) (Bio (1).md)")
-        #expect(title == "Bio (1)")
-        #expect(id == "Bio (1).md")
-    }
-
-    @Test(arguments: [
-        ("Biology (Biology.md)", "Biology", "Biology.md"),
-        ("Chem 2 (Chem 2.csv)", "Chem 2", "Chem 2.csv"),
-        ("Notes (a) (b) (Notes (a) (b).md)", "Notes (a) (b)", "Notes (a) (b).md"),
-        ("Set (1) (2) (Set (1) (2).txt)", "Set (1) (2)", "Set (1) (2).txt"),
-    ])
-    func splitsEveryShapeOfHeading(heading: String, title: String, id: String) {
-        let split = FlagStore.splitHeading(heading)
-        #expect(split.title == title)
-        #expect(split.id == id)
-    }
-
-    /// A heading nobody's renderer wrote — hand-typed in Obsidian. It must still group its
-    /// flags rather than dropping them.
-    @Test func keepsAHeadingThatNamesNoFile() {
-        let (title, id) = FlagStore.splitHeading("Just a heading")
-        #expect(title == "Just a heading")
-        #expect(id == "Just a heading")
-    }
-
-    /// The round trip is what actually matters: what `render` writes, `parse` must read back.
-    @Test func survivesTheRoundTripThroughTheFile() {
-        let card = Card(content: .flip(front: "q", back: "a"),
-                        setID: "Bio (1).md", setTitle: "Bio (1)")
-        let suite = "flag-test-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        let heading = "## \(card.setTitle) (\(card.setID))"
-        let (title, id) = FlagStore.splitHeading(String(heading.dropFirst(3)))
-        #expect(id == card.setID)
-        #expect(title == card.setTitle)
-    }
 
     // MARK: - A window ending at midnight
 

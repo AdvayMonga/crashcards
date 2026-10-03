@@ -7,7 +7,6 @@ import UIKit
 /// No grading and no buttons — this mode is for going through a deck, not scoring yourself.
 /// Quiz mode is where answers are judged.
 struct CardDeckView: View {
-    @Environment(FlagStore.self) private var flags
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openURL) private var openURL
     let onClose: () -> Void
@@ -17,7 +16,6 @@ struct CardDeckView: View {
     @State private var deck: [Card]
     /// How far into the deck we are. Everything before this has been thrown.
     @State private var position = 0
-    @State private var flagging = false
     /// Which cards are face-up, by card identity rather than by slot, so a shuffle can't
     /// hand you a card that is already turned over.
     @State private var flipped: Set<Card.ID> = []
@@ -69,22 +67,12 @@ struct CardDeckView: View {
             } else {
                 stack
             }
-
-            if flagging {
-                CrashDialog(title: "Flag this card",
-                            message: currentCard?.prompt,
-                            onCancel: { flagging = false }) {
-                    FlagOptions(card: currentCard) { flagging = false }
-                }
-                .zIndex(2)
-            }
         }
         .safeAreaInset(edge: .top) { header }
         .safeAreaInset(edge: .bottom) { navigator }
         .screenLayer(item: $explaining) { request in
             AIPickerView(prompt: request.prompt) { explaining = nil }
         }
-        .animation(Motion.pop, value: flagging)
     }
 
     // MARK: - The stack
@@ -242,12 +230,6 @@ struct CardDeckView: View {
             HeaderChip(glyph: .question, name: "Explain with AI",
                        tint: turned ? Brand.chips : Brand.inkFaint) { explainCurrent() }
                 .disabled(!turned)
-
-            let flagged = flags.reason(for: currentCard) != nil
-            HeaderChip(glyph: flagged ? .flagFilled : .flag,
-                       name: flagged ? "Flagged" : "Flag this card",
-                       tint: flagged ? Brand.gold : Brand.inkDim) { flagging = true }
-                .disabled(currentCard == nil || flags.isLocked)
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 8)
@@ -343,32 +325,3 @@ private struct DeckEnd: View {
     }
 }
 
-/// Shared by both study modes: one tap per reason, re-flagging changes the reason.
-struct FlagOptions: View {
-    let card: Card?
-    let onDone: () -> Void
-    @Environment(FlagStore.self) private var flags
-
-    var body: some View {
-        if let card {
-            VStack(spacing: 10) {
-                ForEach(FlagReason.allCases) { reason in
-                    Button(reason.label) {
-                        Haptics.tap()
-                        flags.flag(card, as: reason)
-                        onDone()
-                    }
-                    .buttonStyle(.soft(Brand.gold))
-                }
-                if flags.reason(for: card) != nil {
-                    Button("Unflag") {
-                        Haptics.tap()
-                        flags.unflag(card)
-                        onDone()
-                    }
-                    .buttonStyle(.soft(Brand.mult))
-                }
-            }
-        }
-    }
-}

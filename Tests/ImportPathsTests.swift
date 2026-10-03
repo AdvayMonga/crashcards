@@ -95,15 +95,15 @@ struct ImportPathsTests {
                 == LocalLibrary.directory.standardizedFileURL)
     }
 
-    /// `Flagged.md` is app state; if the scan ever picked it up it would list as a set of
-    /// duplicates of everything you've flagged.
-    @Test func theflagFileIsNotScannedAsASet() throws {
-        let url = LocalLibrary.directory.appendingPathComponent(FlagStore.filename)
+    /// A `Flagged.md` left behind by the retired flagging feature is not a deck; picking it
+    /// up would list a set of duplicates of everything that was ever flagged.
+    @Test func theRetiredFlagFileIsNotScannedAsASet() throws {
+        let url = LocalLibrary.directory.appendingPathComponent(FolderAccess.retiredFlagFile)
         let existed = FileManager.default.fileExists(atPath: url.path)
         if !existed { try "# Flagged\n\n- [ ] **too easy** — a :: b".write(to: url, atomically: true, encoding: .utf8) }
         defer { if !existed { cleanUp([url]) } }
 
-        #expect(try !LocalLibrary.files().contains { $0.lastPathComponent == FlagStore.filename })
+        #expect(try !LocalLibrary.files().contains { $0.lastPathComponent == FolderAccess.retiredFlagFile })
     }
 
     // MARK: - The share sheet

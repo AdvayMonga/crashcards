@@ -12,7 +12,6 @@ import SwiftUI
 /// and everything that covers the screen is a layer in this one `ZStack`.
 struct RootView: View {
     @Environment(LibraryStore.self) private var library
-    @Environment(FlagStore.self) private var flags
     @Environment(ScreenTimeManager.self) private var blocking
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab = Tab.study
@@ -62,15 +61,9 @@ struct RootView: View {
                 .zIndex(3)
             }
 
-            if let message = flags.writeError {
-                CrashAlert(title: "Couldn't write \(FlagStore.filename)",
-                           message: message) { flags.writeError = nil }
-                    .zIndex(4)
-            }
         }
         .animation(Motion.deal, value: prompt?.id)
         .animation(Motion.deal, value: share?.id)
-        .animation(Motion.pop, value: flags.writeError)
         .task {
             StarterDecks.seedIfNeeded()   // before the first scan, so they appear on launch
             reload()
@@ -106,11 +99,10 @@ struct RootView: View {
                     selection: $tab)
     }
 
-    /// Re-read the folders and Flagged.md, so edits made in Obsidian show up here.
+    /// Re-read the folders, so edits made in Obsidian show up here.
     /// Also expires a finished unlock window, in case the monitor extension hasn't fired.
     private func reload() {
         library.reload()
-        flags.load()
         blocking.refresh()
     }
 

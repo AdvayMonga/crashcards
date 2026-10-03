@@ -83,13 +83,6 @@ struct TypedCardTests {
         let text = try String(contentsOf: url, encoding: .utf8)
         return MarkdownParser.parse(text, filename: "\(name).md").set
     }
-
-    @Test func typedCardsSurviveARoundTripThroughMarkdown() throws {
-        let original = parse("Riddle?\n- [x] one\n- [x] two").set.cards
-        let rewritten = MarkdownParser.parse(
-            ImportParser.markdown(title: "T", cards: original), filename: "T.md")
-        #expect(try #require(rewritten.set.cards.first).typedAnswers == ["one", "two"])
-    }
 }
 
 struct AnswerMatcherTests {

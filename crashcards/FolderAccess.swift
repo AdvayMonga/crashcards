@@ -1,17 +1,11 @@
 import Foundation
 
 enum FolderError: LocalizedError {
-    case noFolder
-    case primaryUnavailable
     case duplicateFolder
     case nestedFolder
 
     var errorDescription: String? {
         switch self {
-        case .noFolder:
-            return "No flashcards folder has been chosen yet."
-        case .primaryUnavailable:
-            return "Your first flashcards folder isn't available right now. It may be offline in iCloud, moved, or deleted — check it in Settings."
         case .duplicateFolder:
             return "That folder is already attached."
         case .nestedFolder:
@@ -46,8 +40,7 @@ struct LibraryLoad {
 /// reads every set file under each one, recursively. No paths are hardcoded. The app's own
 /// local library is always scanned too, so no folder is required to use the app.
 ///
-/// Read-only by design: the app never modifies a deck. The one file it creates is a *new*
-/// set, through `createSetFile`, which refuses to overwrite anything already there.
+/// Strictly read-only: nothing here writes to an attached folder at all.
 enum FolderAccess {
     /// Written by an older version's card flagging, which is gone. Still skipped by the
     /// scan: someone who used it has the file sitting in their folder, and reading it back
@@ -207,32 +200,6 @@ enum FolderAccess {
         return result
     }
 
-    /// The first attached folder. Deliberately *not* "the first one that resolves": app files
-    /// must always live in the same place, so an offline folder is an error, not a silent move.
-    private static func primaryFolder() throws -> URL {
-        guard let data = bookmarks().first else { throw FolderError.noFolder }
-        guard let url = try? resolve(data) else { throw FolderError.primaryUnavailable }
-        return url
-    }
-
-    /// Create a *new* set file in the primary folder. Never overwrites: a clashing name
-    /// gets a numbered suffix, so an import can't clobber a deck you already had.
-    @discardableResult
-    static func createSetFile(named title: String, contents: String) throws -> URL {
-        let folder = try primaryFolder()
-        let scoped = folder.startAccessingSecurityScopedResource()
-        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
-
-        let name = SetFile.filename(from: title)
-        var url = folder.appendingPathComponent("\(name).md")
-        var n = 2
-        while FileManager.default.fileExists(atPath: url.path) {
-            url = folder.appendingPathComponent("\(name) \(n).md")
-            n += 1
-        }
-        try contents.write(to: url, atomically: true, encoding: .utf8)
-        return url
-    }
 
     private static func resolve(_ data: Data) throws -> URL {
         var stale = false

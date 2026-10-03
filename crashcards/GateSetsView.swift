@@ -77,9 +77,6 @@ struct GateSetsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            if !picked.isEmpty {
-                PanelAction(title: "Use every set") { useAll() }
-            }
         }
     }
 
@@ -148,12 +145,6 @@ struct GateSetsView: View {
                 picked.insert(set.id)
             }
         }
-        Prefs.gateSetIDs = picked
-    }
-
-    private func useAll() {
-        Haptics.knock()
-        withAnimation(Motion.pop) { picked = [] }
         Prefs.gateSetIDs = picked
     }
 }

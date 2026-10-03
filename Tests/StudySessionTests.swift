@@ -133,4 +133,58 @@ import Testing
         session.record(true)
         #expect(session.consumeRun()?.answered == 1)
     }
+
+    // MARK: - Running short
+
+    /// The whole point: a deck too big for the time you have is cut down to the number you
+    /// asked for, and the run genuinely ends there.
+    @Test func asksOnlyAsManyQuestionsAsYouAskedFor() {
+        let session = StudySession(cards: deck(50), limit: 10)
+        #expect(session.total == 10)
+        for _ in 0..<10 { session.record(true); session.next() }
+        #expect(session.isFinished)
+    }
+
+    @Test func aLimitBiggerThanTheDeckIsJustTheDeck() {
+        #expect(StudySession(cards: deck(4), limit: 10).total == 4)
+        #expect(StudySession(cards: deck(4), limit: 4).total == 4)
+    }
+
+    @Test func noLimitAsksEverything() {
+        #expect(StudySession(cards: deck(37), limit: nil).total == 37)
+        #expect(StudySession(cards: deck(37)).total == 37)
+    }
+
+    /// Starting over must stay short. Re-dealing from the full deck would quietly turn a
+    /// ten-question run into a fifty-question one on the second go.
+    @Test func startingOverStaysShort() {
+        let session = StudySession(cards: deck(50), limit: 10)
+        session.record(true)
+        session.next()
+        session.restart()
+        #expect(session.total == 10)
+        #expect(session.position == 0)
+        #expect(session.answeredCount == 0)
+    }
+
+    /// A short run is a sample of the deck, not its first ten cards — otherwise every run
+    /// of a big set drills the same corner of it.
+    @Test func shortRunsAreDrawnFromTheWholeDeck() {
+        let cards = deck(60)
+        var seen = Set<String>()
+        for _ in 0..<12 {
+            let session = StudySession(cards: cards, limit: 5)
+            while let card = session.current { seen.insert(card.prompt); session.next() }
+        }
+        // Twelve draws of five from sixty hitting ten or fewer distinct cards would mean
+        // the cut isn't random. The real number is near sixty.
+        #expect(seen.count > 10)
+    }
+
+    /// What you missed has to come from the questions you were actually asked.
+    @Test func missedCardsStayInsideTheShortRun() {
+        let session = StudySession(cards: deck(40), limit: 6)
+        for _ in 0..<6 { session.record(false); session.next() }
+        #expect(session.missedCards.count == 6)
+    }
 }

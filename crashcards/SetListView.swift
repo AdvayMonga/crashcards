@@ -10,6 +10,10 @@ struct SetListView: View {
     @Environment(StatsStore.self) private var stats
     @State private var selected: Set<String> = Prefs.selectedSetIDs
     @State private var studyMode: StudyMode?
+    /// The chosen length, written through to `Prefs`. Held here as well because `Prefs` is
+    /// plain UserDefaults, which SwiftUI can't observe — reading it straight would leave the
+    /// lit chip stale until something else redrew the bar.
+    @State private var lengthChoice: Int? = Prefs.quizLength
     @State private var importingFolder = false
     @State private var importingSet = false
     @State private var showingProblems = false
@@ -83,7 +87,8 @@ struct SetListView: View {
                 CardDeckView(cards: cards) { studyMode = nil }
             case .quiz:
                 // The days you've already put in set the mult this run opens on.
-                QuizView(session: StudySession(cards: cards, dayStreak: stats.dayStreak)) {
+                QuizView(session: StudySession(cards: cards, dayStreak: stats.dayStreak,
+                                               limit: quizLength)) {
                     studyMode = nil
                 }
             }
@@ -271,6 +276,17 @@ struct SetListView: View {
                     .opacity(barHint.isEmpty ? 0 : 1)
                     .transition(.opacity)
 
+                if !culling, !lengthOptions.isEmpty {
+                    VStack(spacing: 6) {
+                        Text("Questions")
+                            .font(.brandCaption)
+                            .foregroundStyle(Brand.inkFaint)
+                        CrashSegmented(options: lengthOptions, selection: lengthBinding,
+                                       across: lengthOptions.count)
+                    }
+                    .transition(.opacity)
+                }
+
                 HStack(spacing: 12) {
                     if culling {
                         Button("Cancel") { endCulling() }
@@ -329,6 +345,31 @@ struct SetListView: View {
             return marked.count == 1 ? "1 set will be deleted" : "\(marked.count) sets will be deleted"
         }
         return selectedSets.isEmpty ? "Pick a set to start" : ""
+    }
+
+    /// How many questions the next quiz asks. `nil` is the whole selection.
+    ///
+    /// Only the presets below what you've actually picked are offered: on a deck of twelve,
+    /// "20" and "50" and "All" are three buttons that do the same thing.
+    private var lengthOptions: [(value: Int?, title: String)] {
+        let available = StudyMode.quiz.usableCards(in: selectedSets).count
+        guard available > Self.lengthPresets[0] else { return [] }
+        let presets = Self.lengthPresets.filter { $0 < available }
+        return presets.map { (Optional($0), "\($0)") } + [(nil, "All \(available)")]
+    }
+
+    private static let lengthPresets = [10, 20, 50]
+
+    /// A preset that no longer fits the selection falls back to the whole thing, so shrinking
+    /// your picks can't leave the bar lit on a number that isn't on it any more.
+    private var quizLength: Int? {
+        guard let chosen = lengthChoice,
+              lengthOptions.contains(where: { $0.value == chosen }) else { return nil }
+        return chosen
+    }
+
+    private var lengthBinding: Binding<Int?> {
+        Binding(get: { quizLength }, set: { lengthChoice = $0; Prefs.quizLength = $0 })
     }
 
     private func start(_ mode: StudyMode) {

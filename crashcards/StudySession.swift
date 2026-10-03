@@ -6,6 +6,9 @@ import Observation
 @Observable
 final class StudySession {
     private let cards: [Card]
+    /// How many of them this run asks, or nil for all of them. Held so starting over deals
+    /// a fresh short run rather than quietly growing into the whole deck.
+    private let limit: Int?
     private(set) var order: [Int]
     private(set) var position = 0
     private var results: [Int: Bool] = [:]   // cards-index → answered correctly
@@ -18,11 +21,20 @@ final class StudySession {
     let dayStreak: Int
     private(set) var score: ScoreRun
 
-    init(cards: [Card], dayStreak: Int = 0) {
+    init(cards: [Card], dayStreak: Int = 0, limit: Int? = nil) {
         self.cards = cards
         self.dayStreak = dayStreak
+        self.limit = limit
         score = ScoreRun(dayStreak: dayStreak)
-        order = Array(cards.indices).shuffled()
+        order = Self.deal(cards.count, limit: limit)
+    }
+
+    /// Shuffle, then take the first `limit`. Shuffling before cutting is what makes a short
+    /// run a random sample of the deck rather than the same opening cards every time.
+    private static func deal(_ count: Int, limit: Int?) -> [Int] {
+        let shuffled = Array(0..<count).shuffled()
+        guard let limit, limit < shuffled.count else { return shuffled }
+        return Array(shuffled.prefix(limit))
     }
 
     var total: Int { order.count }
@@ -54,7 +66,7 @@ final class StudySession {
     }
 
     func restart() {
-        order = Array(cards.indices).shuffled()
+        order = Self.deal(cards.count, limit: limit)
         position = 0
         results.removeAll()
         startedAt = Date()

@@ -54,17 +54,16 @@ line being a spelling that counts. Typed answers are forgiving about case, punct
 leading article and accents, but never about the actual word.
 
 You can keep sets inside the app or attach a folder you already own (an Obsidian vault, say).
-Imports also accept CSV, TSV and a few common Q/A layouts, and there's a built-in prompt that
-turns a chatbot into a deck generator — the app has no API key and makes no API calls, it just
-hands the prompt over and parses what you paste back.
+A deck file can be `.md`, `.markdown`, `.txt` or `.text` for the syntax above, or a `.csv` or
+`.tsv` spreadsheet export.
 
 Two starter decks ship with the app so there's something to study on first launch.
 
 ## Privacy
 
 No accounts, no server, no analytics, no tracking. Your Screen Time selection stays on the
-device in an App Group; your cards stay in your files. The only network request the app ever
-makes is fetching a link you explicitly paste in.
+device in an App Group; your cards stay in your files. The app makes no network requests at
+all — asking a chatbot to explain a card opens that chatbot, it doesn't call an API.
 
 ## Building it
 
@@ -87,7 +86,7 @@ which is granted by hand per bundle ID.
 xcodebuild test -scheme crashcards -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-190 tests across 23 suites, all pure logic — parsers, scoring, session state, schedules. No UI
+169 tests across 21 suites, all pure logic — parsers, scoring, session state, schedules. No UI
 tests. CI runs the same command on every pull request.
 
 ## Layout
@@ -98,9 +97,8 @@ tests. CI runs the same command on every pull request.
 | `ShieldConfig` | Draws the system block screen |
 | `ShieldAction` | Answers its buttons — opens the app, or closes the blocked one |
 | `DeviceActivityMonitorExt` | Re-applies the shield when an unlock window expires |
-| `ShareExtension` | Takes text shared from other apps and turns it into a deck |
 
-The four communicate through a shared App Group; `BlockingShared.swift` is the whole of that
+The three communicate through a shared App Group; `BlockingShared.swift` is the whole of that
 channel. iOS 17+, iPhone only.
 
 ## Credits

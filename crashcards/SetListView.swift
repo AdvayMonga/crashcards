@@ -46,7 +46,7 @@ struct SetListView: View {
                     .environment(flags)
             }
             .screenLayer(isPresented: $importingSet) {
-                ImportSetView(onClose: { importingSet = false }) { library.reload() }
+                ImportSetView(onClose: { importingSet = false })
                     .environment(library)
             }
             .overlay { setDialogs }

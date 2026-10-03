@@ -480,63 +480,10 @@ struct CrashStepper: View {
     }
 }
 
-/// A grid of slabs where exactly one is lit. Replaces `Picker`.
-///
-/// It wraps rather than squeezing: the import screen offers seven formats, and seven labels
-/// across one row is seven truncated labels.
-struct CrashSegmented<Value: Hashable>: View {
-    let options: [(value: Value, title: String)]
-    @Binding var selection: Value
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var perRow: Int { min(options.count, 3) }
-
-    var body: some View {
-        VStack(spacing: 8) {
-            ForEach(Array(stride(from: 0, to: options.count, by: perRow)), id: \.self) { start in
-                HStack(spacing: 8) {
-                    ForEach(options[start..<min(start + perRow, options.count)], id: \.value) {
-                        option in cell(option)
-                    }
-                    // Keeps a short last row's cells the same width as the rows above it.
-                    ForEach(0..<max(0, start + perRow - options.count), id: \.self) { _ in
-                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
-                    }
-                }
-            }
-        }
-        .animation(Motion.pop(reduceMotion), value: selection)
-    }
-
-    private func cell(_ option: (value: Value, title: String)) -> some View {
-        let on = option.value == selection
-        return Button {
-            Haptics.select()
-            selection = option.value
-        } label: {
-            Text(option.title)
-                .font(.brandCaption)
-                .foregroundStyle(on ? Brand.outline : Brand.inkDim)
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 6)
-                .slab(on ? Brand.gold : Brand.surfaceLedge, radius: 9,
-                      lift: on ? 0 : 3, highlight: on ? 0.22 : 0.04)
-        }
-        .buttonStyle(.pressable)
-        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-    }
-}
-
 /// A text box drawn by us: sunk into the slab rather than standing on it, with a gold caret.
 struct CrashField: View {
     let placeholder: String
     @Binding var text: String
-    var multiline = false
-    var minHeight: CGFloat = 0
-    var mono = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -551,30 +498,19 @@ struct CrashField: View {
                     .font(.brandCaption)
                     .foregroundStyle(Brand.inkFaint)
                     .padding(.horizontal, 14)
-                    .padding(.vertical, multiline ? 14 : 12)
+                    .padding(.vertical, 12)
                     .allowsHitTesting(false)
             }
 
-            field
-                .font(mono ? .system(size: 14, design: .monospaced) : .reading(16))
-                .foregroundStyle(Brand.ink)
-                .tint(Brand.gold)
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, 10)
-                .padding(.vertical, multiline ? 6 : 4)
-        }
-        .frame(minHeight: max(minHeight, 46))
-    }
-
-    @ViewBuilder private var field: some View {
-        if multiline {
-            TextEditor(text: $text)
-        } else {
             TextField("", text: $text)
                 .textFieldStyle(.plain)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 8)
+                .font(.reading(16))
+                .foregroundStyle(Brand.ink)
+                .tint(Brand.gold)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
         }
+        .frame(minHeight: 46)
     }
 }
 

@@ -58,8 +58,4 @@ struct LongOptionTests {
         let parsed = MarkdownParser.parse(text, filename: "x.md")
         #expect(parsed.issues.contains { $0.kind == .longOption })
     }
-
-    @Test func theDeckPromptTellsTheModelTheSameLimit() {
-        #expect(DeckPrompt.text(topic: "anything").contains("\(MarkdownParser.optionLimit) characters"))
-    }
 }
